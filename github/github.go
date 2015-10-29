@@ -5,6 +5,8 @@ import (
 	"html/template"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/google/go-github/github"
 	"src.sourcegraph.com/sourcegraph/platform/apps/issues2/issues"
 )
@@ -22,7 +24,7 @@ type service struct {
 	cl *github.Client
 }
 
-func (s service) ListByRepo(repo issues.RepoSpec, opt interface{}) ([]issues.Issue, error) {
+func (s service) ListByRepo(_ context.Context, repo issues.RepoSpec, opt interface{}) ([]issues.Issue, error) {
 	ghIssuesAndPRs, _, err := s.cl.Issues.ListByRepo(repo.Owner, repo.Repo, &github.IssueListByRepoOptions{State: "open"})
 	if err != nil {
 		return nil, err
@@ -40,7 +42,6 @@ func (s service) ListByRepo(repo issues.RepoSpec, opt interface{}) ([]issues.Iss
 			State: *issue.State,
 			Title: *issue.Title,
 			Comment: issues.Comment{
-				Body: *issue.Body,
 				User: issues.User{
 					Login:     *issue.User.Login,
 					AvatarURL: template.URL(*issue.User.AvatarURL),
@@ -54,7 +55,7 @@ func (s service) ListByRepo(repo issues.RepoSpec, opt interface{}) ([]issues.Iss
 	return is, nil
 }
 
-func (s service) Get(repo issues.RepoSpec, id uint64) (issues.Issue, error) {
+func (s service) Get(_ context.Context, repo issues.RepoSpec, id uint64) (issues.Issue, error) {
 	issue, _, err := s.cl.Issues.Get(repo.Owner, repo.Repo, int(id))
 	if err != nil {
 		return issues.Issue{}, err
@@ -65,7 +66,6 @@ func (s service) Get(repo issues.RepoSpec, id uint64) (issues.Issue, error) {
 		State: *issue.State,
 		Title: *issue.Title,
 		Comment: issues.Comment{
-			Body: *issue.Body,
 			User: issues.User{
 				Login:     *issue.User.Login,
 				AvatarURL: template.URL(*issue.User.AvatarURL),
@@ -76,22 +76,36 @@ func (s service) Get(repo issues.RepoSpec, id uint64) (issues.Issue, error) {
 	}, nil
 }
 
-func (s service) ListComments(repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
+func (s service) ListComments(_ context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
+	var comments []issues.Comment
+
+	issue, _, err := s.cl.Issues.Get(repo.Owner, repo.Repo, int(id))
+	if err != nil {
+		return comments, err
+	}
+	comments = append(comments, issues.Comment{
+		User: issues.User{
+			Login:     *issue.User.Login,
+			AvatarURL: template.URL(*issue.User.AvatarURL),
+			HTMLURL:   template.URL(*issue.User.HTMLURL),
+		},
+		CreatedAt: *issue.CreatedAt,
+		Body:      *issue.Body,
+	})
+
 	ghComments, _, err := s.cl.Issues.ListComments(repo.Owner, repo.Repo, int(id), nil)
 	if err != nil {
-		return nil, err
+		return comments, err
 	}
-
-	var comments []issues.Comment
 	for _, comment := range ghComments {
 		comments = append(comments, issues.Comment{
-			Body: *comment.Body,
 			User: issues.User{
 				Login:     *comment.User.Login,
 				AvatarURL: template.URL(*comment.User.AvatarURL),
 				HTMLURL:   template.URL(*comment.User.HTMLURL),
 			},
 			CreatedAt: *comment.CreatedAt,
+			Body:      *comment.Body,
 		})
 	}
 
@@ -121,13 +135,13 @@ func (service) Comment() issues.Comment {
 	})
 
 	return issues.Comment{
-		Body: *comment.Body,
 		User: issues.User{
 			Login:     *comment.User.Login,
 			AvatarURL: template.URL(*comment.User.AvatarURL),
 			HTMLURL:   template.URL(*comment.User.HTMLURL),
 		},
 		CreatedAt: *comment.CreatedAt,
+		Body:      *comment.Body,
 	}
 }
 
