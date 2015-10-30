@@ -4,7 +4,6 @@ package fs
 import (
 	"encoding/json"
 	"html/template"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,22 +35,17 @@ func (s service) ListByRepo(ctx context.Context, repo issues.RepoSpec, opt inter
 
 	var is []issues.Issue
 
-	dirs, err := ioutil.ReadDir(s.dir)
+	dirs, err := readDirIDs(s.dir)
 	if err != nil {
 		return is, err
 	}
-
 	for _, dir := range dirs {
 		if !dir.IsDir() {
 			continue
 		}
-		id, err := parseUint64(dir.Name())
-		if err != nil {
-			continue
-		}
 
 		var issue issue
-		err = jsonDecodeFile(filepath.Join(s.dir, dir.Name(), "0.json"), &issue)
+		err = jsonDecodeFile(filepath.Join(s.dir, dir.Name(), "0"), &issue)
 		if err != nil {
 			return is, err
 		}
@@ -62,7 +56,7 @@ func (s service) ListByRepo(ctx context.Context, repo issues.RepoSpec, opt inter
 		}
 
 		is = append(is, issues.Issue{
-			ID:    id,
+			ID:    dir.ID,
 			State: issue.State,
 			Title: issue.Title,
 			Comment: issues.Comment{
@@ -83,7 +77,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 	sg := sourcegraph.NewClientFromContext(ctx)
 
 	var issue issue
-	err := jsonDecodeFile(filepath.Join(s.dir, formatUint64(id), "0.json"), &issue)
+	err := jsonDecodeFile(filepath.Join(s.dir, formatUint64(id), "0"), &issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -114,11 +108,10 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 	var comments []issues.Comment
 
 	dir := filepath.Join(s.dir, formatUint64(id))
-	fis, err := ioutil.ReadDir(dir)
+	fis, err := readDirIDs(dir)
 	if err != nil {
 		return comments, err
 	}
-
 	for _, fi := range fis {
 		var comment comment
 		err = jsonDecodeFile(filepath.Join(dir, fi.Name()), &comment)
@@ -186,5 +179,4 @@ func jsonDecodeFile(path string, v interface{}) error {
 	return nil
 }
 
-func formatUint64(n uint64) string         { return strconv.FormatUint(n, 10) }
-func parseUint64(s string) (uint64, error) { return strconv.ParseUint(s, 10, 64) }
+func formatUint64(n uint64) string { return strconv.FormatUint(n, 10) }
