@@ -21,6 +21,8 @@ type Service interface {
 
 	CreateComment(ctx context.Context, repo RepoSpec, id uint64, comment Comment) (Comment, error)
 
+	Create(ctx context.Context, repo RepoSpec, issue Issue) (Issue, error)
+
 	// TODO: Play things.
 	Comment() Comment
 	CurrentUser() User
