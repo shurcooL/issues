@@ -176,6 +176,56 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 	}, nil
 }
 
+func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
+	sg := sourcegraph.NewClientFromContext(ctx)
+
+	issue := issue{
+		State: "open",
+		Title: i.Title,
+		comment: comment{
+			AuthorUID: putil.UserFromContext(ctx).UID,
+			CreatedAt: time.Now(),
+			Body:      i.Body,
+		},
+	}
+
+	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
+	if err != nil {
+		return issues.Issue{}, err
+	}
+
+	// Commit to storage.
+	fis, err := readDirIDs(s.dir)
+	if err != nil {
+		return issues.Issue{}, err
+	}
+	issueID := fis[len(fis)-1].ID + 1
+	dir := filepath.Join(s.dir, formatUint64(issueID))
+	err = os.Mkdir(dir, 0755)
+	if err != nil {
+		return issues.Issue{}, err
+	}
+	err = jsonEncodeFile(filepath.Join(dir, "0"), issue)
+	if err != nil {
+		return issues.Issue{}, err
+	}
+
+	return issues.Issue{
+		ID:    issueID,
+		State: issue.State,
+		Title: issue.Title,
+		Comment: issues.Comment{
+			User: issues.User{
+				Login:     user.Login,
+				AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
+				HTMLURL:   template.URL("https://github.com/" + user.Login), // TODO.
+			},
+			CreatedAt: issue.CreatedAt,
+			Body:      issue.Body,
+		},
+	}, nil
+}
+
 // TODO.
 func (service) CurrentUser() issues.User {
 	return issues.User{
