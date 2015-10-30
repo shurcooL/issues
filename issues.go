@@ -19,6 +19,8 @@ type Service interface {
 
 	ListComments(ctx context.Context, repo RepoSpec, id uint64, opt interface{}) ([]Comment, error)
 
+	CreateComment(ctx context.Context, repo RepoSpec, id uint64, comment Comment) error
+
 	// TODO: Play things.
 	Comment() Comment
 	CurrentUser() User
