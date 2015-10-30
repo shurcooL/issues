@@ -139,25 +139,41 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 	return comments, nil
 }
 
-func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) error {
+func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
+	sg := sourcegraph.NewClientFromContext(ctx)
+
 	comment := comment{
 		AuthorUID: putil.UserFromContext(ctx).UID,
 		CreatedAt: time.Now(),
 		Body:      c.Body,
 	}
 
+	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: comment.AuthorUID})
+	if err != nil {
+		return issues.Comment{}, err
+	}
+
+	// Commit to storage.
 	dir := filepath.Join(s.dir, formatUint64(id))
 	fis, err := readDirIDs(dir)
 	if err != nil {
-		return err
+		return issues.Comment{}, err
 	}
-
 	commentID := fis[len(fis)-1].ID + 1
 	err = jsonEncodeFile(filepath.Join(dir, formatUint64(commentID)), comment)
 	if err != nil {
-		return err
+		return issues.Comment{}, err
 	}
-	return nil
+
+	return issues.Comment{
+		User: issues.User{
+			Login:     user.Login,
+			AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
+			HTMLURL:   template.URL("https://github.com/" + user.Login), // TODO.
+		},
+		CreatedAt: comment.CreatedAt,
+		Body:      comment.Body,
+	}, nil
 }
 
 // TODO.
