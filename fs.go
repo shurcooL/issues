@@ -7,12 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/google/go-github/github"
-
 	"golang.org/x/net/context"
 	"sourcegraph.com/sourcegraph/go-sourcegraph/sourcegraph"
 	"src.sourcegraph.com/sourcegraph/platform/apps/issues2/issues"
+	"src.sourcegraph.com/sourcegraph/platform/putil"
 )
 
 // NewService ...
@@ -138,6 +139,27 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 	return comments, nil
 }
 
+func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) error {
+	comment := comment{
+		AuthorUID: putil.UserFromContext(ctx).UID,
+		CreatedAt: time.Now(),
+		Body:      c.Body,
+	}
+
+	dir := filepath.Join(s.dir, formatUint64(id))
+	fis, err := readDirIDs(dir)
+	if err != nil {
+		return err
+	}
+
+	commentID := fis[len(fis)-1].ID + 1
+	err = jsonEncodeFile(filepath.Join(dir, formatUint64(commentID)), comment)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // TODO.
 func (service) CurrentUser() issues.User {
 	return issues.User{
@@ -172,6 +194,19 @@ func jsonDecodeFile(path string, v interface{}) error {
 		return err
 	}
 	err = json.NewDecoder(f).Decode(v)
+	_ = f.Close()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func jsonEncodeFile(path string, v interface{}) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	err = json.NewEncoder(f).Encode(v)
 	_ = f.Close()
 	if err != nil {
 		return err
