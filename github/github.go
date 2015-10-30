@@ -5,9 +5,8 @@ import (
 	"html/template"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/google/go-github/github"
+	"golang.org/x/net/context"
 	"src.sourcegraph.com/sourcegraph/platform/apps/issues2/issues"
 )
 
