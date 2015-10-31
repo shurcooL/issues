@@ -224,6 +224,53 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	}, nil
 }
 
+func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, req issues.IssueRequest) (issues.Issue, error) {
+	if err := req.Validate(); err != nil {
+		return issues.Issue{}, err
+	}
+
+	sg := sourcegraph.NewClientFromContext(ctx)
+
+	// Get from storage.
+	var issue issue
+	err := jsonDecodeFile(filepath.Join(s.dir, formatUint64(id), "0"), &issue)
+	if err != nil {
+		return issues.Issue{}, err
+	}
+
+	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
+	if err != nil {
+		return issues.Issue{}, err
+	}
+
+	if req.State != nil {
+		issue.State = *req.State
+	}
+	if req.Title != nil {
+		issue.Title = *req.Title
+	}
+
+	// Commit to storage.
+	err = jsonEncodeFile(filepath.Join(s.dir, formatUint64(id), "0"), issue)
+	if err != nil {
+		return issues.Issue{}, err
+	}
+
+	return issues.Issue{
+		ID:    id,
+		State: issue.State,
+		Title: issue.Title,
+		Comment: issues.Comment{
+			User: issues.User{
+				Login:     user.Login,
+				AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
+				HTMLURL:   template.URL("https://github.com/" + user.Login), // TODO.
+			},
+			CreatedAt: issue.CreatedAt,
+		},
+	}, nil
+}
+
 // nextID returns the next id for the given dir. If there are no previous elements, it begins with id 1.
 func nextID(dir string) (uint64, error) {
 	fis, err := readDirIDs(dir)
