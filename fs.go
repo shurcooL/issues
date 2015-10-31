@@ -155,11 +155,10 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 	// Commit to storage.
 	dir := filepath.Join(s.dir, formatUint64(id))
-	fis, err := readDirIDs(dir)
+	commentID, err := nextID(dir)
 	if err != nil {
 		return issues.Comment{}, err
 	}
-	commentID := fis[len(fis)-1].ID + 1
 	err = jsonEncodeFile(filepath.Join(dir, formatUint64(commentID)), comment)
 	if err != nil {
 		return issues.Comment{}, err
@@ -195,11 +194,10 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	}
 
 	// Commit to storage.
-	fis, err := readDirIDs(s.dir)
+	issueID, err := nextID(s.dir)
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	issueID := fis[len(fis)-1].ID + 1
 	dir := filepath.Join(s.dir, formatUint64(issueID))
 	err = os.Mkdir(dir, 0755)
 	if err != nil {
@@ -224,6 +222,18 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 			Body:      issue.Body,
 		},
 	}, nil
+}
+
+// nextID returns the next id for the given dir. If there are no previous elements, it begins with id 1.
+func nextID(dir string) (uint64, error) {
+	fis, err := readDirIDs(dir)
+	if err != nil {
+		return 0, err
+	}
+	if len(fis) == 0 {
+		return 1, nil
+	}
+	return fis[len(fis)-1].ID + 1, nil
 }
 
 // TODO.
