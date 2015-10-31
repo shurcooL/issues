@@ -1,6 +1,7 @@
 package issues
 
 import (
+	"fmt"
 	"html/template"
 	"time"
 
@@ -22,6 +23,8 @@ type Service interface {
 	CreateComment(ctx context.Context, repo RepoSpec, id uint64, comment Comment) (Comment, error)
 
 	Create(ctx context.Context, repo RepoSpec, issue Issue) (Issue, error)
+
+	Edit(ctx context.Context, repo RepoSpec, id uint64, req IssueRequest) (Issue, error)
 
 	// TODO: Play things.
 	Comment() Comment
@@ -48,4 +51,24 @@ type User struct {
 	Login     string
 	AvatarURL template.URL
 	HTMLURL   template.URL
+}
+
+// IssueRequest is a request to edit an issue.
+type IssueRequest struct {
+	State *string
+	Title *string
+}
+
+func (ir IssueRequest) Validate() error {
+	if ir.State != nil {
+		switch *ir.State {
+		case "open", "closed":
+		default:
+			return fmt.Errorf("bad state")
+		}
+	}
+	if ir.Title != nil {
+		// TODO.
+	}
+	return nil
 }
