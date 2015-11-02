@@ -3,7 +3,6 @@ package github
 
 import (
 	"html/template"
-	"time"
 
 	"github.com/google/go-github/github"
 	"golang.org/x/net/context"
@@ -23,8 +22,15 @@ type service struct {
 	cl *github.Client
 }
 
-func (s service) ListByRepo(_ context.Context, repo issues.RepoSpec, opt interface{}) ([]issues.Issue, error) {
-	ghIssuesAndPRs, _, err := s.cl.Issues.ListByRepo(repo.Owner, repo.Repo, &github.IssueListByRepoOptions{State: "open"})
+func (s service) List(_ context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
+	ghOpt := github.IssueListByRepoOptions{}
+	switch opt.State {
+	case issues.OpenState:
+		// Do nothing, this is the GitHub default.
+	case issues.ClosedState:
+		ghOpt.State = "closed"
+	}
+	ghIssuesAndPRs, _, err := s.cl.Issues.ListByRepo(repo.Owner, repo.Repo, &ghOpt)
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +58,52 @@ func (s service) ListByRepo(_ context.Context, repo issues.RepoSpec, opt interfa
 	}
 
 	return is, nil
+}
+
+func (s service) Count(_ context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
+	var count uint64
+
+	// Count Issues and PRs (since there appears to be no way to count just issues in GitHub API).
+	{
+		ghOpt := github.IssueListByRepoOptions{ListOptions: github.ListOptions{PerPage: 1}}
+		switch opt.State {
+		case issues.OpenState:
+			// Do nothing, this is the GitHub default.
+		case issues.ClosedState:
+			ghOpt.State = "closed"
+		}
+		ghIssuesAndPRs, ghIssuesAndPRsResp, err := s.cl.Issues.ListByRepo(repo.Owner, repo.Repo, &ghOpt)
+		if err != nil {
+			return 0, err
+		}
+		if ghIssuesAndPRsResp.LastPage != 0 {
+			count = uint64(ghIssuesAndPRsResp.LastPage)
+		} else {
+			count = uint64(len(ghIssuesAndPRs))
+		}
+	}
+
+	// Subtract PRs.
+	{
+		ghOpt := github.PullRequestListOptions{ListOptions: github.ListOptions{PerPage: 1}}
+		switch opt.State {
+		case issues.OpenState:
+			// Do nothing, this is the GitHub default.
+		case issues.ClosedState:
+			ghOpt.State = "closed"
+		}
+		ghPRs, ghPRsResp, err := s.cl.PullRequests.List(repo.Owner, repo.Repo, &ghOpt)
+		if err != nil {
+			return 0, err
+		}
+		if ghPRsResp.LastPage != 0 {
+			count -= uint64(ghPRsResp.LastPage)
+		} else {
+			count -= uint64(len(ghPRs))
+		}
+	}
+
+	return count, nil
 }
 
 func (s service) Get(_ context.Context, repo issues.RepoSpec, id uint64) (issues.Issue, error) {
@@ -92,7 +144,7 @@ func (s service) ListComments(_ context.Context, repo issues.RepoSpec, id uint64
 		Body:      *issue.Body,
 	})
 
-	ghComments, _, err := s.cl.Issues.ListComments(repo.Owner, repo.Repo, int(id), nil)
+	ghComments, _, err := s.cl.Issues.ListComments(repo.Owner, repo.Repo, int(id), nil) // TODO: Pagination.
 	if err != nil {
 		return comments, err
 	}
@@ -111,27 +163,47 @@ func (s service) ListComments(_ context.Context, repo issues.RepoSpec, id uint64
 	return comments, nil
 }
 
-func (service) Comment() issues.Comment {
-	newInt := func(v int) *int {
-		return &v
+func (s service) ListEvents(_ context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
+	var events []issues.Event
+
+	ghEvents, _, err := s.cl.Issues.ListIssueEvents(repo.Owner, repo.Repo, int(id), nil) // TODO: Pagination.
+	if err != nil {
+		return events, err
 	}
-	newString := func(v string) *string {
-		return &v
-	}
-	newTime := func(v time.Time) *time.Time {
-		return &v
+	for _, event := range ghEvents {
+		et := issues.EventType(*event.Event)
+		if !et.Valid() {
+			continue
+		}
+		e := issues.Event{
+			Actor: issues.User{
+				Login:     *event.Actor.Login,
+				AvatarURL: template.URL(*event.Actor.AvatarURL),
+				HTMLURL:   template.URL(*event.Actor.HTMLURL),
+			},
+			CreatedAt: *event.CreatedAt,
+			Type:      et,
+		}
+		switch et {
+		case issues.Renamed:
+			e.Rename = &issues.Rename{
+				From: *event.Rename.From,
+				To:   *event.Rename.To,
+			}
+		}
+		events = append(events, e)
 	}
 
-	comment := (github.IssueComment)(github.IssueComment{
-		ID:        (*int)(newInt(143399786)),
-		Body:      (*string)(newString("I've resolved this in 4387efb. Please re-open or leave a comment if there's still room for improvement here.")),
-		User:      user(),
-		CreatedAt: (*time.Time)(newTime(time.Unix(1443244474, 0).UTC())),
-		UpdatedAt: (*time.Time)(newTime(time.Unix(1443244474, 0).UTC())),
-		URL:       (*string)(newString("https://api.github.com/repos/shurcooL/vfsgen/issues/comments/143399786")),
-		HTMLURL:   (*string)(newString("https://github.com/shurcooL/vfsgen/issues/8#issuecomment-143399786")),
-		IssueURL:  (*string)(newString("https://api.github.com/repos/shurcooL/vfsgen/issues/8")),
+	return events, nil
+}
+
+func (s service) CreateComment(_ context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
+	comment, _, err := s.cl.Issues.CreateComment(repo.Owner, repo.Repo, int(id), &github.IssueComment{
+		Body: &c.Body,
 	})
+	if err != nil {
+		return issues.Comment{}, err
+	}
 
 	return issues.Comment{
 		User: issues.User{
@@ -141,68 +213,70 @@ func (service) Comment() issues.Comment {
 		},
 		CreatedAt: *comment.CreatedAt,
 		Body:      *comment.Body,
+	}, nil
+}
+
+func (s service) Create(_ context.Context, repo issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
+	issue, _, err := s.cl.Issues.Create(repo.Owner, repo.Repo, &github.IssueRequest{
+		Title: &i.Title,
+		Body:  &i.Body,
+	})
+	if err != nil {
+		return issues.Issue{}, err
 	}
+
+	return issues.Issue{
+		ID:    uint64(*issue.Number),
+		State: *issue.State,
+		Title: *issue.Title,
+		Comment: issues.Comment{
+			User: issues.User{
+				Login:     *issue.User.Login,
+				AvatarURL: template.URL(*issue.User.AvatarURL),
+				HTMLURL:   template.URL(*issue.User.HTMLURL),
+			},
+			CreatedAt: *issue.CreatedAt,
+		},
+	}, nil
+}
+
+func (s service) Edit(_ context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, error) {
+	if err := ir.Validate(); err != nil {
+		return issues.Issue{}, err
+	}
+
+	ghIR := github.IssueRequest{
+		Title: ir.Title,
+	}
+	if ir.State != nil {
+		state := string(*ir.State)
+		ghIR.State = &state
+	}
+
+	issue, _, err := s.cl.Issues.Edit(repo.Owner, repo.Repo, int(id), &ghIR)
+	if err != nil {
+		return issues.Issue{}, err
+	}
+
+	return issues.Issue{
+		ID:    uint64(*issue.Number),
+		State: *issue.State,
+		Title: *issue.Title,
+		Comment: issues.Comment{
+			User: issues.User{
+				Login:     *issue.User.Login,
+				AvatarURL: template.URL(*issue.User.AvatarURL),
+				HTMLURL:   template.URL(*issue.User.HTMLURL),
+			},
+			CreatedAt: *issue.CreatedAt,
+		},
+	}, nil
 }
 
 func (service) CurrentUser() issues.User {
-	user := user()
-
 	return issues.User{
-		Login:     *user.Login,
-		AvatarURL: template.URL(*user.AvatarURL),
-		HTMLURL:   template.URL(*user.HTMLURL),
+		Login:     "shurcooL",
+		AvatarURL: "https://avatars.githubusercontent.com/u/1924134?v=3",
+		HTMLURL:   "https://github.com/shurcooL",
 	}
-}
-
-func user() *github.User {
-	newInt := func(v int) *int {
-		return &v
-	}
-	newBool := func(v bool) *bool {
-		return &v
-	}
-	newString := func(v string) *string {
-		return &v
-	}
-
-	return (*github.User)(&github.User{
-		Login:             (*string)(newString("shurcooL")),
-		ID:                (*int)(newInt(1924134)),
-		AvatarURL:         (*string)(newString("https://avatars.githubusercontent.com/u/1924134?v=3")),
-		HTMLURL:           (*string)(newString("https://github.com/shurcooL")),
-		GravatarID:        (*string)(newString("")),
-		Name:              (*string)(nil),
-		Company:           (*string)(nil),
-		Blog:              (*string)(nil),
-		Location:          (*string)(nil),
-		Email:             (*string)(nil),
-		Hireable:          (*bool)(nil),
-		Bio:               (*string)(nil),
-		PublicRepos:       (*int)(nil),
-		PublicGists:       (*int)(nil),
-		Followers:         (*int)(nil),
-		Following:         (*int)(nil),
-		CreatedAt:         (*github.Timestamp)(nil),
-		UpdatedAt:         (*github.Timestamp)(nil),
-		Type:              (*string)(newString("User")),
-		SiteAdmin:         (*bool)(newBool(false)),
-		TotalPrivateRepos: (*int)(nil),
-		OwnedPrivateRepos: (*int)(nil),
-		PrivateGists:      (*int)(nil),
-		DiskUsage:         (*int)(nil),
-		Collaborators:     (*int)(nil),
-		Plan:              (*github.Plan)(nil),
-		URL:               (*string)(newString("https://api.github.com/users/shurcooL")),
-		EventsURL:         (*string)(newString("https://api.github.com/users/shurcooL/events{/privacy}")),
-		FollowingURL:      (*string)(newString("https://api.github.com/users/shurcooL/following{/other_user}")),
-		FollowersURL:      (*string)(newString("https://api.github.com/users/shurcooL/followers")),
-		GistsURL:          (*string)(newString("https://api.github.com/users/shurcooL/gists{/gist_id}")),
-		OrganizationsURL:  (*string)(newString("https://api.github.com/users/shurcooL/orgs")),
-		ReceivedEventsURL: (*string)(newString("https://api.github.com/users/shurcooL/received_events")),
-		ReposURL:          (*string)(newString("https://api.github.com/users/shurcooL/repos")),
-		StarredURL:        (*string)(newString("https://api.github.com/users/shurcooL/starred{/owner}{/repo}")),
-		SubscriptionsURL:  (*string)(newString("https://api.github.com/users/shurcooL/subscriptions")),
-		TextMatches:       ([]github.TextMatch)(nil),
-		Permissions:       (*map[string]bool)(nil),
-	})
 }

@@ -14,20 +14,21 @@ type RepoSpec struct {
 }
 
 type Service interface {
-	ListByRepo(ctx context.Context, repo RepoSpec, opt interface{}) ([]Issue, error)
+	List(ctx context.Context, repo RepoSpec, opt IssueListOptions) ([]Issue, error)
+	Count(ctx context.Context, repo RepoSpec, opt IssueListOptions) (uint64, error)
 
 	Get(ctx context.Context, repo RepoSpec, id uint64) (Issue, error)
 
 	ListComments(ctx context.Context, repo RepoSpec, id uint64, opt interface{}) ([]Comment, error)
+	ListEvents(ctx context.Context, repo RepoSpec, id uint64, opt interface{}) ([]Event, error)
 
 	CreateComment(ctx context.Context, repo RepoSpec, id uint64, comment Comment) (Comment, error)
 
 	Create(ctx context.Context, repo RepoSpec, issue Issue) (Issue, error)
 
-	Edit(ctx context.Context, repo RepoSpec, id uint64, req IssueRequest) (Issue, error)
+	Edit(ctx context.Context, repo RepoSpec, id uint64, ir IssueRequest) (Issue, error)
 
-	// TODO: Play things.
-	Comment() Comment
+	// TODO: This doesn't belong here, does it?
 	CurrentUser() User
 }
 
@@ -46,6 +47,36 @@ type Comment struct {
 	Body      string
 }
 
+// Event represents an event that occurred around an issue.
+type Event struct {
+	Actor     User
+	CreatedAt time.Time
+	Type      EventType
+	Rename    *Rename
+}
+
+type EventType string
+
+const (
+	Reopened EventType = "reopened"
+	Closed   EventType = "closed"
+	Renamed  EventType = "renamed"
+)
+
+func (et EventType) Valid() bool {
+	switch et {
+	case Reopened, Closed, Renamed:
+		return true
+	default:
+		return false
+	}
+}
+
+type Rename struct {
+	From string
+	To   string
+}
+
 // User represents a user.
 type User struct {
 	Login     string
@@ -55,14 +86,22 @@ type User struct {
 
 // IssueRequest is a request to edit an issue.
 type IssueRequest struct {
-	State *string
+	State *State
 	Title *string
 }
+
+// State represents the issue state.
+type State string
+
+const (
+	OpenState   State = "open"
+	ClosedState State = "closed"
+)
 
 func (ir IssueRequest) Validate() error {
 	if ir.State != nil {
 		switch *ir.State {
-		case "open", "closed":
+		case OpenState, ClosedState:
 		default:
 			return fmt.Errorf("bad state")
 		}
