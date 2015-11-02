@@ -35,7 +35,7 @@ type Service interface {
 // Issue represents an issue on a repository.
 type Issue struct {
 	ID    uint64
-	State string
+	State State
 	Title string
 	Comment
 }

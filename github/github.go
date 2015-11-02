@@ -44,7 +44,7 @@ func (s service) List(_ context.Context, repo issues.RepoSpec, opt issues.IssueL
 
 		is = append(is, issues.Issue{
 			ID:    uint64(*issue.Number),
-			State: *issue.State,
+			State: issues.State(*issue.State),
 			Title: *issue.Title,
 			Comment: issues.Comment{
 				User: issues.User{
@@ -114,7 +114,7 @@ func (s service) Get(_ context.Context, repo issues.RepoSpec, id uint64) (issues
 
 	return issues.Issue{
 		ID:    uint64(*issue.Number),
-		State: *issue.State,
+		State: issues.State(*issue.State),
 		Title: *issue.Title,
 		Comment: issues.Comment{
 			User: issues.User{
@@ -227,7 +227,7 @@ func (s service) Create(_ context.Context, repo issues.RepoSpec, i issues.Issue)
 
 	return issues.Issue{
 		ID:    uint64(*issue.Number),
-		State: *issue.State,
+		State: issues.State(*issue.State),
 		Title: *issue.Title,
 		Comment: issues.Comment{
 			User: issues.User{
@@ -260,7 +260,7 @@ func (s service) Edit(_ context.Context, repo issues.RepoSpec, id uint64, ir iss
 
 	return issues.Issue{
 		ID:    uint64(*issue.Number),
-		State: *issue.State,
+		State: issues.State(*issue.State),
 		Title: *issue.Title,
 		Comment: issues.Comment{
 			User: issues.User{
