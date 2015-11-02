@@ -31,7 +31,7 @@ type service struct {
 	issues.Service
 }
 
-func (s service) ListByRepo(ctx context.Context, repo issues.RepoSpec, opt interface{}) ([]issues.Issue, error) {
+func (s service) List(ctx context.Context, repo issues.RepoSpec, opt interface{}) ([]issues.Issue, error) {
 	sg := sourcegraph.NewClientFromContext(ctx)
 
 	var is []issues.Issue
@@ -179,7 +179,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	sg := sourcegraph.NewClientFromContext(ctx)
 
 	issue := issue{
-		State: "open",
+		State: issues.OpenState,
 		Title: i.Title,
 		comment: comment{
 			AuthorUID: putil.UserFromContext(ctx).UID,
@@ -224,8 +224,8 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	}, nil
 }
 
-func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, req issues.IssueRequest) (issues.Issue, error) {
-	if err := req.Validate(); err != nil {
+func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, error) {
+	if err := ir.Validate(); err != nil {
 		return issues.Issue{}, err
 	}
 
@@ -243,11 +243,11 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, req 
 		return issues.Issue{}, err
 	}
 
-	if req.State != nil {
-		issue.State = *req.State
+	if ir.State != nil {
+		issue.State = *ir.State
 	}
-	if req.Title != nil {
-		issue.Title = *req.Title
+	if ir.Title != nil {
+		issue.Title = *ir.Title
 	}
 
 	// Commit to storage.
