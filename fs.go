@@ -26,12 +26,9 @@ func NewService() issues.Service {
 
 type service struct {
 	dir string
-
-	// TODO.
-	issues.Service
 }
 
-func (s service) List(ctx context.Context, repo issues.RepoSpec, opt interface{}) ([]issues.Issue, error) {
+func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
 	sg := sourcegraph.NewClientFromContext(ctx)
 
 	var is []issues.Issue
@@ -51,11 +48,14 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt interface{}
 			return is, err
 		}
 
+		if issue.State != opt.State {
+			continue
+		}
+
 		user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
 		if err != nil {
 			return is, err
 		}
-
 		is = append(is, issues.Issue{
 			ID:    dir.ID,
 			State: issue.State,
@@ -74,6 +74,34 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt interface{}
 	return is, nil
 }
 
+func (s service) Count(_ context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
+	var count uint64
+
+	dirs, err := readDirIDs(s.dir)
+	if err != nil {
+		return 0, err
+	}
+	for _, dir := range dirs {
+		if !dir.IsDir() {
+			continue
+		}
+
+		var issue issue
+		err = jsonDecodeFile(filepath.Join(s.dir, dir.Name(), "0"), &issue)
+		if err != nil {
+			return 0, err
+		}
+
+		if issue.State != opt.State {
+			continue
+		}
+
+		count++
+	}
+
+	return count, nil
+}
+
 func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issues.Issue, error) {
 	sg := sourcegraph.NewClientFromContext(ctx)
 
@@ -87,7 +115,6 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 	if err != nil {
 		return issues.Issue{}, err
 	}
-
 	return issues.Issue{
 		ID:    id,
 		State: issue.State,
@@ -124,7 +151,6 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 		if err != nil {
 			return comments, err
 		}
-
 		comments = append(comments, issues.Comment{
 			User: issues.User{
 				Login:     user.Login,
@@ -137,6 +163,42 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 	}
 
 	return comments, nil
+}
+
+func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
+	sg := sourcegraph.NewClientFromContext(ctx)
+
+	var events []issues.Event
+
+	dir := filepath.Join(s.dir, formatUint64(id), "events")
+	fis, err := readDirIDs(dir)
+	if err != nil {
+		return events, err
+	}
+	for _, fi := range fis {
+		var event event
+		err = jsonDecodeFile(filepath.Join(dir, fi.Name()), &event)
+		if err != nil {
+			return events, err
+		}
+
+		user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: event.ActorUID})
+		if err != nil {
+			return events, err
+		}
+		events = append(events, issues.Event{
+			Actor: issues.User{
+				Login:     user.Login,
+				AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
+				HTMLURL:   template.URL("https://github.com/" + user.Login), // TODO.
+			},
+			CreatedAt: event.CreatedAt,
+			Type:      event.Type,
+			Rename:    event.Rename,
+		})
+	}
+
+	return events, nil
 }
 
 func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
@@ -203,6 +265,10 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	if err != nil {
 		return issues.Issue{}, err
 	}
+	err = os.Mkdir(filepath.Join(dir, "events"), 0755)
+	if err != nil {
+		return issues.Issue{}, err
+	}
 	err = jsonEncodeFile(filepath.Join(dir, "0"), issue)
 	if err != nil {
 		return issues.Issue{}, err
@@ -246,12 +312,40 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	if ir.State != nil {
 		issue.State = *ir.State
 	}
+	origTitle := issue.Title
 	if ir.Title != nil {
 		issue.Title = *ir.Title
 	}
 
 	// Commit to storage.
 	err = jsonEncodeFile(filepath.Join(s.dir, formatUint64(id), "0"), issue)
+	if err != nil {
+		return issues.Issue{}, err
+	}
+
+	// THINK: Is this the best place to do this? Should it be returned from this func? How would GH backend do it?
+	// Create event and commit to storage.
+	eventID, err := nextID(filepath.Join(s.dir, formatUint64(id), "events"))
+	if err != nil {
+		return issues.Issue{}, err
+	}
+	event := event{
+		ActorUID:  putil.UserFromContext(ctx).UID,
+		CreatedAt: time.Now(),
+	}
+	switch {
+	case ir.State != nil && *ir.State == issues.OpenState:
+		event.Type = issues.Reopened
+	case ir.State != nil && *ir.State == issues.ClosedState:
+		event.Type = issues.Closed
+	case ir.Title != nil:
+		event.Type = issues.Renamed
+		event.Rename = &issues.Rename{
+			From: origTitle,
+			To:   *ir.Title,
+		}
+	}
+	err = jsonEncodeFile(filepath.Join(s.dir, formatUint64(id), "events", formatUint64(eventID)), event)
 	if err != nil {
 		return issues.Issue{}, err
 	}
