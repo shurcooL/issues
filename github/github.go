@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/go-github/github"
 	"golang.org/x/net/context"
-	"src.sourcegraph.com/sourcegraph/platform/apps/issues2/issues"
+	"src.sourcegraph.com/apps/issues/issues"
 )
 
 func NewService(client *github.Client) issues.Service {
