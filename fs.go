@@ -37,7 +37,8 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 	if err != nil {
 		return is, err
 	}
-	for _, dir := range dirs {
+	for i := len(dirs); i > 0; i-- {
+		dir := dirs[i-1]
 		if !dir.IsDir() {
 			continue
 		}
