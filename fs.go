@@ -17,15 +17,20 @@ import (
 )
 
 // NewService ...
-func NewService() issues.Service {
+func NewService(rootDir string) issues.Service {
 	return service{
-		// TODO.
-		dir: "/Users/Dmitri/.sourcegraph/issues/user/Go-Package-Store.next",
+		root: rootDir,
 	}
 }
 
 type service struct {
-	dir string
+	// root directory for issue storage for all repos.
+	root string
+}
+
+// dir returns the path to root of issue storage for the given repo.
+func (s service) dir(repo issues.RepoSpec) string {
+	return filepath.Join(s.root, filepath.FromSlash(repo.URI))
 }
 
 func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
@@ -33,7 +38,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 
 	var is []issues.Issue
 
-	dirs, err := readDirIDs(s.dir)
+	dirs, err := readDirIDs(s.dir(repo))
 	if err != nil {
 		return is, err
 	}
@@ -44,7 +49,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 		}
 
 		var issue issue
-		err = jsonDecodeFile(filepath.Join(s.dir, dir.Name(), "0"), &issue)
+		err = jsonDecodeFile(filepath.Join(s.dir(repo), dir.Name(), "0"), &issue)
 		if err != nil {
 			return is, err
 		}
@@ -78,7 +83,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 func (s service) Count(_ context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
 	var count uint64
 
-	dirs, err := readDirIDs(s.dir)
+	dirs, err := readDirIDs(s.dir(repo))
 	if err != nil {
 		return 0, err
 	}
@@ -88,7 +93,7 @@ func (s service) Count(_ context.Context, repo issues.RepoSpec, opt issues.Issue
 		}
 
 		var issue issue
-		err = jsonDecodeFile(filepath.Join(s.dir, dir.Name(), "0"), &issue)
+		err = jsonDecodeFile(filepath.Join(s.dir(repo), dir.Name(), "0"), &issue)
 		if err != nil {
 			return 0, err
 		}
@@ -107,7 +112,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 	sg := sourcegraph.NewClientFromContext(ctx)
 
 	var issue issue
-	err := jsonDecodeFile(filepath.Join(s.dir, formatUint64(id), "0"), &issue)
+	err := jsonDecodeFile(filepath.Join(s.dir(repo), formatUint64(id), "0"), &issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -136,7 +141,7 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 
 	var comments []issues.Comment
 
-	dir := filepath.Join(s.dir, formatUint64(id))
+	dir := filepath.Join(s.dir(repo), formatUint64(id))
 	fis, err := readDirIDs(dir)
 	if err != nil {
 		return comments, err
@@ -171,7 +176,7 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 
 	var events []issues.Event
 
-	dir := filepath.Join(s.dir, formatUint64(id), "events")
+	dir := filepath.Join(s.dir(repo), formatUint64(id), "events")
 	fis, err := readDirIDs(dir)
 	if err != nil {
 		return events, err
@@ -217,7 +222,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 	}
 
 	// Commit to storage.
-	dir := filepath.Join(s.dir, formatUint64(id))
+	dir := filepath.Join(s.dir(repo), formatUint64(id))
 	commentID, err := nextID(dir)
 	if err != nil {
 		return issues.Comment{}, err
@@ -257,11 +262,15 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	}
 
 	// Commit to storage.
-	issueID, err := nextID(s.dir)
+	issueID, err := nextID(s.dir(repo))
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	dir := filepath.Join(s.dir, formatUint64(issueID))
+	dir := filepath.Join(s.dir(repo), formatUint64(issueID))
+	err = os.MkdirAll(s.dir(repo), 0755) // Only needed for first issue in the repo. TODO: Consider MkdirAll or even better?
+	if err != nil {
+		return issues.Issue{}, err
+	}
 	err = os.Mkdir(dir, 0755)
 	if err != nil {
 		return issues.Issue{}, err
@@ -300,7 +309,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 	// Get from storage.
 	var issue issue
-	err := jsonDecodeFile(filepath.Join(s.dir, formatUint64(id), "0"), &issue)
+	err := jsonDecodeFile(filepath.Join(s.dir(repo), formatUint64(id), "0"), &issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -319,14 +328,14 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 
 	// Commit to storage.
-	err = jsonEncodeFile(filepath.Join(s.dir, formatUint64(id), "0"), issue)
+	err = jsonEncodeFile(filepath.Join(s.dir(repo), formatUint64(id), "0"), issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
 
 	// THINK: Is this the best place to do this? Should it be returned from this func? How would GH backend do it?
 	// Create event and commit to storage.
-	eventID, err := nextID(filepath.Join(s.dir, formatUint64(id), "events"))
+	eventID, err := nextID(filepath.Join(s.dir(repo), formatUint64(id), "events"))
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -346,7 +355,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 			To:   *ir.Title,
 		}
 	}
-	err = jsonEncodeFile(filepath.Join(s.dir, formatUint64(id), "events", formatUint64(eventID)), event)
+	err = jsonEncodeFile(filepath.Join(s.dir(repo), formatUint64(id), "events", formatUint64(eventID)), event)
 	if err != nil {
 		return issues.Issue{}, err
 	}
