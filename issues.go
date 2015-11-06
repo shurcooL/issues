@@ -9,8 +9,7 @@ import (
 )
 
 type RepoSpec struct {
-	Owner string
-	Repo  string
+	URI string // URI is clean '/'-separated URI. E.g, "user/repo".
 }
 
 type Service interface {
