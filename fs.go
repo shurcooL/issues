@@ -58,6 +58,11 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 			continue
 		}
 
+		// Count comments.
+		comments, err := readDirIDs(filepath.Join(s.dir(repo), dir.Name()))
+		if err != nil {
+			return is, err
+		}
 		user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
 		if err != nil {
 			return is, err
@@ -74,6 +79,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 				},
 				CreatedAt: issue.CreatedAt,
 			},
+			Replies: len(comments) - 1,
 		})
 	}
 
