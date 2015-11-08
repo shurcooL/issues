@@ -37,6 +37,7 @@ type Issue struct {
 	State State
 	Title string
 	Comment
+	Replies int
 }
 
 // Comment represents a comment left on an issue.

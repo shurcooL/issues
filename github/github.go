@@ -57,6 +57,7 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 				},
 				CreatedAt: *issue.CreatedAt,
 			},
+			Replies: *issue.Comments,
 		})
 	}
 
