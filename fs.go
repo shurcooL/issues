@@ -3,6 +3,7 @@ package fs
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"os"
 	"path/filepath"
@@ -379,6 +380,10 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 			CreatedAt: issue.CreatedAt,
 		},
 	}, nil
+}
+
+func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
+	return issues.Comment{}, fmt.Errorf("not yet implemented")
 }
 
 // nextID returns the next id for the given dir. If there are no previous elements, it begins with id 1.
