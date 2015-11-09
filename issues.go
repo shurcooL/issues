@@ -3,6 +3,7 @@ package issues
 import (
 	"fmt"
 	"html/template"
+	"strings"
 	"time"
 
 	"golang.org/x/net/context"
@@ -21,11 +22,11 @@ type Service interface {
 	ListComments(ctx context.Context, repo RepoSpec, id uint64, opt interface{}) ([]Comment, error)
 	ListEvents(ctx context.Context, repo RepoSpec, id uint64, opt interface{}) ([]Event, error)
 
+	Create(ctx context.Context, repo RepoSpec, issue Issue) (Issue, error)
 	CreateComment(ctx context.Context, repo RepoSpec, id uint64, comment Comment) (Comment, error)
 
-	Create(ctx context.Context, repo RepoSpec, issue Issue) (Issue, error)
-
 	Edit(ctx context.Context, repo RepoSpec, id uint64, ir IssueRequest) (Issue, error)
+	EditComment(ctx context.Context, repo RepoSpec, id uint64, comment Comment) (Comment, error)
 
 	// TODO: This doesn't belong here, does it?
 	CurrentUser(ctx context.Context) (User, error)
@@ -58,6 +59,7 @@ type User struct {
 type IssueRequest struct {
 	State *State
 	Title *string
+	// TODO: Comment body.
 }
 
 // State represents the issue state.
@@ -77,7 +79,16 @@ func (ir IssueRequest) Validate() error {
 		}
 	}
 	if ir.Title != nil {
-		// TODO.
+		if strings.TrimSpace(*ir.Title) == "" {
+			return fmt.Errorf("title can't be blank or all whitespace")
+		}
+	}
+	return nil
+}
+
+func (c Comment) Validate() error {
+	if strings.TrimSpace(c.Body) == "" {
+		return fmt.Errorf("comment body can't be blank or all whitespace")
 	}
 	return nil
 }

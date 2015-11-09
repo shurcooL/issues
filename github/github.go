@@ -251,6 +251,7 @@ func (s service) Create(_ context.Context, rs issues.RepoSpec, i issues.Issue) (
 }
 
 func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, error) {
+	// TODO: Why Validate here but not Create, etc.? Figure this out. Might only be needed in fs implementation.
 	if err := ir.Validate(); err != nil {
 		return issues.Issue{}, err
 	}
@@ -281,6 +282,31 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 			},
 			CreatedAt: *issue.CreatedAt,
 		},
+	}, nil
+}
+
+func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
+	// TODO: Why Validate here but not CreateComment, etc.? Figure this out. Might only be needed in fs implementation.
+	if err := c.Validate(); err != nil {
+		return issues.Comment{}, err
+	}
+	repo := ghRepoSpec(rs)
+
+	comment, _, err := s.cl.EditComment(repo.Owner, repo.Repo, int(id), &github.IssueComment{
+		Body: &c.Body,
+	})
+	if err != nil {
+		return issues.Comment{}, err
+	}
+
+	return issues.Comment{
+		User: issues.User{
+			Login:     *comment.User.Login,
+			AvatarURL: template.URL(*comment.User.AvatarURL),
+			HTMLURL:   template.URL(*comment.User.HTMLURL),
+		},
+		CreatedAt: *comment.CreatedAt,
+		Body:      *comment.Body,
 	}, nil
 }
 
