@@ -142,6 +142,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 		return comments, err
 	}
 	comments = append(comments, issues.Comment{
+		ID: 0, // We use 0 as a special ID for the comment that is the issue description. This comment is edited differently.
 		User: issues.User{
 			Login:     *issue.User.Login,
 			AvatarURL: template.URL(*issue.User.AvatarURL),
@@ -157,6 +158,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 	}
 	for _, comment := range ghComments {
 		comments = append(comments, issues.Comment{
+			ID: uint64(*comment.ID),
 			User: issues.User{
 				Login:     *comment.User.Login,
 				AvatarURL: template.URL(*comment.User.AvatarURL),
@@ -215,6 +217,7 @@ func (s service) CreateComment(_ context.Context, rs issues.RepoSpec, id uint64,
 	}
 
 	return issues.Comment{
+		ID: uint64(*comment.ID),
 		User: issues.User{
 			Login:     *comment.User.Login,
 			AvatarURL: template.URL(*comment.User.AvatarURL),
@@ -285,14 +288,20 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 	}, nil
 }
 
-func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
+func (s service) EditComment(_ context.Context, rs issues.RepoSpec, _ uint64, c issues.Comment) (issues.Comment, error) {
 	// TODO: Why Validate here but not CreateComment, etc.? Figure this out. Might only be needed in fs implementation.
 	if err := c.Validate(); err != nil {
 		return issues.Comment{}, err
 	}
 	repo := ghRepoSpec(rs)
 
-	comment, _, err := s.cl.EditComment(repo.Owner, repo.Repo, int(id), &github.IssueComment{
+	if c.ID == 0 {
+		// TODO: Use s.cl.Issues.Edit() API to edit comment 0, etc.
+		return issues.Comment{}, fmt.Errorf("editing issue (comment 0) is not yet implemented")
+	}
+
+	// GitHub API uses comment ID and doesn't need issue ID. Commit IDs are unique per repo (not per issue).
+	comment, _, err := s.cl.Issues.EditComment(repo.Owner, repo.Repo, int(c.ID), &github.IssueComment{
 		Body: &c.Body,
 	})
 	if err != nil {
@@ -300,6 +309,7 @@ func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, c
 	}
 
 	return issues.Comment{
+		ID: uint64(*comment.ID),
 		User: issues.User{
 			Login:     *comment.User.Login,
 			AvatarURL: template.URL(*comment.User.AvatarURL),

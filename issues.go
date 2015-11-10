@@ -43,6 +43,7 @@ type Issue struct {
 
 // Comment represents a comment left on an issue.
 type Comment struct {
+	ID        uint64
 	User      User
 	CreatedAt time.Time
 	Body      string
