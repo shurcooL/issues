@@ -24,6 +24,9 @@ type service struct {
 	cl *github.Client
 }
 
+// We use 0 as a special ID for the comment that is the issue description. This comment is edited differently.
+const issueDescriptionCommentID = uint64(0)
+
 func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
 	repo := ghRepoSpec(rs)
 	ghOpt := github.IssueListByRepoOptions{}
@@ -142,7 +145,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 		return comments, err
 	}
 	comments = append(comments, issues.Comment{
-		ID: 0, // We use 0 as a special ID for the comment that is the issue description. This comment is edited differently.
+		ID: issueDescriptionCommentID,
 		User: issues.User{
 			Login:     *issue.User.Login,
 			AvatarURL: template.URL(*issue.User.AvatarURL),
@@ -243,6 +246,7 @@ func (s service) Create(_ context.Context, rs issues.RepoSpec, i issues.Issue) (
 		State: issues.State(*issue.State),
 		Title: *issue.Title,
 		Comment: issues.Comment{
+			ID: issueDescriptionCommentID,
 			User: issues.User{
 				Login:     *issue.User.Login,
 				AvatarURL: template.URL(*issue.User.AvatarURL),
@@ -278,6 +282,7 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 		State: issues.State(*issue.State),
 		Title: *issue.Title,
 		Comment: issues.Comment{
+			ID: issueDescriptionCommentID,
 			User: issues.User{
 				Login:     *issue.User.Login,
 				AvatarURL: template.URL(*issue.User.AvatarURL),
@@ -288,16 +293,32 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 	}, nil
 }
 
-func (s service) EditComment(_ context.Context, rs issues.RepoSpec, _ uint64, c issues.Comment) (issues.Comment, error) {
+func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
 	// TODO: Why Validate here but not CreateComment, etc.? Figure this out. Might only be needed in fs implementation.
 	if err := c.Validate(); err != nil {
 		return issues.Comment{}, err
 	}
 	repo := ghRepoSpec(rs)
 
-	if c.ID == 0 {
-		// TODO: Use s.cl.Issues.Edit() API to edit comment 0, etc.
-		return issues.Comment{}, fmt.Errorf("editing issue (comment 0) is not yet implemented")
+	if c.ID == issueDescriptionCommentID {
+		// Use Issues.Edit() API to edit comment 0 (the issue description).
+		issue, _, err := s.cl.Issues.Edit(repo.Owner, repo.Repo, int(id), &github.IssueRequest{
+			Body: &c.Body,
+		})
+		if err != nil {
+			return issues.Comment{}, err
+		}
+
+		return issues.Comment{
+			ID: issueDescriptionCommentID,
+			User: issues.User{
+				Login:     *issue.User.Login,
+				AvatarURL: template.URL(*issue.User.AvatarURL),
+				HTMLURL:   template.URL(*issue.User.HTMLURL),
+			},
+			CreatedAt: *issue.CreatedAt,
+			Body:      *issue.Body,
+		}, nil
 	}
 
 	// GitHub API uses comment ID and doesn't need issue ID. Commit IDs are unique per repo (not per issue).
