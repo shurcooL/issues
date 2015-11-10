@@ -3,7 +3,6 @@ package fs
 
 import (
 	"encoding/json"
-	"fmt"
 	"html/template"
 	"os"
 	"path/filepath"
@@ -298,6 +297,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		State: issue.State,
 		Title: issue.Title,
 		Comment: issues.Comment{
+			ID: 0,
 			User: issues.User{
 				Login:     user.Login,
 				AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
@@ -377,6 +377,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		State: issue.State,
 		Title: issue.Title,
 		Comment: issues.Comment{
+			ID: 0,
 			User: issues.User{
 				Login:     user.Login,
 				AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
@@ -392,11 +393,43 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		return issues.Comment{}, err
 	}
 
-	if c.ID == 0 {
-		return issues.Comment{}, fmt.Errorf("editing issue (comment 0) is not yet implemented")
-	}
-
 	sg := sourcegraph.NewClientFromContext(ctx)
+
+	if c.ID == 0 {
+		// Get from storage.
+		var issue issue
+		err := jsonDecodeFile(filepath.Join(s.dir(repo), formatUint64(id), "0"), &issue)
+		if err != nil {
+			return issues.Issue{}, err
+		}
+
+		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
+		//       Or maybe not once this is used to do authz checks.
+		user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
+		if err != nil {
+			return issues.Issue{}, err
+		}
+
+		// Apply edits.
+		issue.Body = c.Body
+
+		// Commit to storage.
+		err = jsonEncodeFile(filepath.Join(s.dir(repo), formatUint64(id), "0"), issue)
+		if err != nil {
+			return issues.Issue{}, err
+		}
+
+		return issues.Comment{
+			ID: 0,
+			User: issues.User{
+				Login:     user.Login,
+				AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
+				HTMLURL:   template.URL("https://github.com/" + user.Login), // TODO.
+			},
+			CreatedAt: comment.CreatedAt,
+			Body:      comment.Body,
+		}, nil
+	}
 
 	// Get from storage.
 	var comment comment
