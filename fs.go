@@ -165,6 +165,7 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			return comments, err
 		}
 		comments = append(comments, issues.Comment{
+			ID: fi.ID,
 			User: issues.User{
 				Login:     user.Login,
 				AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
@@ -240,6 +241,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 	}
 
 	return issues.Comment{
+		ID: commentID,
 		User: issues.User{
 			Login:     user.Login,
 			AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
@@ -321,11 +323,14 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		return issues.Issue{}, err
 	}
 
+	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
+	//       Or maybe not once this is used to do authz checks.
 	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
 	if err != nil {
 		return issues.Issue{}, err
 	}
 
+	// Apply edits.
 	if ir.State != nil {
 		issue.State = *ir.State
 	}
@@ -383,7 +388,49 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 }
 
 func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
-	return issues.Comment{}, fmt.Errorf("not yet implemented")
+	if err := c.Validate(); err != nil {
+		return issues.Comment{}, err
+	}
+
+	if c.ID == 0 {
+		return issues.Comment{}, fmt.Errorf("editing issue (comment 0) is not yet implemented")
+	}
+
+	sg := sourcegraph.NewClientFromContext(ctx)
+
+	// Get from storage.
+	var comment comment
+	err := jsonDecodeFile(filepath.Join(s.dir(repo), formatUint64(id), formatUint64(c.ID)), &comment)
+	if err != nil {
+		return issues.Comment{}, err
+	}
+
+	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
+	//       Or maybe not once this is used to do authz checks.
+	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: comment.AuthorUID})
+	if err != nil {
+		return issues.Comment{}, err
+	}
+
+	// Apply edits.
+	comment.Body = c.Body
+
+	// Commit to storage.
+	err = jsonEncodeFile(filepath.Join(s.dir(repo), formatUint64(id), formatUint64(c.ID)), comment)
+	if err != nil {
+		return issues.Comment{}, err
+	}
+
+	return issues.Comment{
+		ID: c.ID,
+		User: issues.User{
+			Login:     user.Login,
+			AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
+			HTMLURL:   template.URL("https://github.com/" + user.Login), // TODO.
+		},
+		CreatedAt: comment.CreatedAt,
+		Body:      comment.Body,
+	}, nil
 }
 
 // nextID returns the next id for the given dir. If there are no previous elements, it begins with id 1.
