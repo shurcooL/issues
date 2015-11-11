@@ -69,7 +69,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 			State: issue.State,
 			Title: issue.Title,
 			Comment: issues.Comment{
-				User:      sgUser(user),
+				User:      sgUser(ctx, user),
 				CreatedAt: issue.CreatedAt,
 			},
 			Replies: len(comments) - 1,
@@ -125,7 +125,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		State: issue.State,
 		Title: issue.Title,
 		Comment: issues.Comment{
-			User:      sgUser(user),
+			User:      sgUser(ctx, user),
 			CreatedAt: issue.CreatedAt,
 		},
 	}, nil
@@ -154,7 +154,7 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 		}
 		comments = append(comments, issues.Comment{
 			ID:        fi.ID,
-			User:      sgUser(user),
+			User:      sgUser(ctx, user),
 			CreatedAt: comment.CreatedAt,
 			Body:      comment.Body,
 		})
@@ -185,7 +185,7 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 			return events, err
 		}
 		events = append(events, issues.Event{
-			Actor:     sgUser(user),
+			Actor:     sgUser(ctx, user),
 			CreatedAt: event.CreatedAt,
 			Type:      event.Type,
 			Rename:    event.Rename,
@@ -222,7 +222,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 	return issues.Comment{
 		ID:        commentID,
-		User:      sgUser(user),
+		User:      sgUser(ctx, user),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
 	}, nil
@@ -275,7 +275,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		Title: issue.Title,
 		Comment: issues.Comment{
 			ID:        0,
-			User:      sgUser(user),
+			User:      sgUser(ctx, user),
 			CreatedAt: issue.CreatedAt,
 			Body:      issue.Body,
 		},
@@ -351,7 +351,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		Title: issue.Title,
 		Comment: issues.Comment{
 			ID:        0,
-			User:      sgUser(user),
+			User:      sgUser(ctx, user),
 			CreatedAt: issue.CreatedAt,
 		},
 	}, nil
@@ -390,7 +390,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 		return issues.Comment{
 			ID:        0,
-			User:      sgUser(user),
+			User:      sgUser(ctx, user),
 			CreatedAt: issue.CreatedAt,
 			Body:      issue.Body,
 		}, nil
@@ -421,7 +421,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 	return issues.Comment{
 		ID:        c.ID,
-		User:      sgUser(user),
+		User:      sgUser(ctx, user),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
 	}, nil
@@ -446,7 +446,7 @@ func (service) CurrentUser(ctx context.Context) (issues.User, error) {
 	if err != nil {
 		return issues.User{}, err
 	}
-	return sgUser(user), nil
+	return sgUser(ctx, user), nil
 }
 
 func formatUint64(n uint64) string { return strconv.FormatUint(n, 10) }
