@@ -400,14 +400,14 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		var issue issue
 		err := jsonDecodeFile(filepath.Join(s.dir(repo), formatUint64(id), "0"), &issue)
 		if err != nil {
-			return issues.Issue{}, err
+			return issues.Comment{}, err
 		}
 
 		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 		//       Or maybe not once this is used to do authz checks.
 		user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
 		if err != nil {
-			return issues.Issue{}, err
+			return issues.Comment{}, err
 		}
 
 		// Apply edits.
@@ -416,7 +416,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		// Commit to storage.
 		err = jsonEncodeFile(filepath.Join(s.dir(repo), formatUint64(id), "0"), issue)
 		if err != nil {
-			return issues.Issue{}, err
+			return issues.Comment{}, err
 		}
 
 		return issues.Comment{
@@ -426,8 +426,8 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 				AvatarURL: avatarURL(user.Login),                            //template.URL(user.AvatarURL),
 				HTMLURL:   template.URL("https://github.com/" + user.Login), // TODO.
 			},
-			CreatedAt: comment.CreatedAt,
-			Body:      comment.Body,
+			CreatedAt: issue.CreatedAt,
+			Body:      issue.Body,
 		}, nil
 	}
 
