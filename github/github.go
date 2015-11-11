@@ -53,11 +53,7 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 			State: issues.State(*issue.State),
 			Title: *issue.Title,
 			Comment: issues.Comment{
-				User: issues.User{
-					Login:     *issue.User.Login,
-					AvatarURL: template.URL(*issue.User.AvatarURL),
-					HTMLURL:   template.URL(*issue.User.HTMLURL),
-				},
+				User:      ghUser(issue.User),
 				CreatedAt: *issue.CreatedAt,
 			},
 			Replies: *issue.Comments,
@@ -126,11 +122,7 @@ func (s service) Get(_ context.Context, rs issues.RepoSpec, id uint64) (issues.I
 		State: issues.State(*issue.State),
 		Title: *issue.Title,
 		Comment: issues.Comment{
-			User: issues.User{
-				Login:     *issue.User.Login,
-				AvatarURL: template.URL(*issue.User.AvatarURL),
-				HTMLURL:   template.URL(*issue.User.HTMLURL),
-			},
+			User:      ghUser(issue.User),
 			CreatedAt: *issue.CreatedAt,
 		},
 	}, nil
@@ -145,12 +137,8 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 		return comments, err
 	}
 	comments = append(comments, issues.Comment{
-		ID: issueDescriptionCommentID,
-		User: issues.User{
-			Login:     *issue.User.Login,
-			AvatarURL: template.URL(*issue.User.AvatarURL),
-			HTMLURL:   template.URL(*issue.User.HTMLURL),
-		},
+		ID:        issueDescriptionCommentID,
+		User:      ghUser(issue.User),
 		CreatedAt: *issue.CreatedAt,
 		Body:      *issue.Body,
 	})
@@ -161,12 +149,8 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 	}
 	for _, comment := range ghComments {
 		comments = append(comments, issues.Comment{
-			ID: uint64(*comment.ID),
-			User: issues.User{
-				Login:     *comment.User.Login,
-				AvatarURL: template.URL(*comment.User.AvatarURL),
-				HTMLURL:   template.URL(*comment.User.HTMLURL),
-			},
+			ID:        uint64(*comment.ID),
+			User:      ghUser(comment.User),
 			CreatedAt: *comment.CreatedAt,
 			Body:      *comment.Body,
 		})
@@ -189,11 +173,7 @@ func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, op
 			continue
 		}
 		e := issues.Event{
-			Actor: issues.User{
-				Login:     *event.Actor.Login,
-				AvatarURL: template.URL(*event.Actor.AvatarURL),
-				HTMLURL:   template.URL(*event.Actor.HTMLURL),
-			},
+			Actor:     ghUser(event.Actor),
 			CreatedAt: *event.CreatedAt,
 			Type:      et,
 		}
@@ -220,12 +200,8 @@ func (s service) CreateComment(_ context.Context, rs issues.RepoSpec, id uint64,
 	}
 
 	return issues.Comment{
-		ID: uint64(*comment.ID),
-		User: issues.User{
-			Login:     *comment.User.Login,
-			AvatarURL: template.URL(*comment.User.AvatarURL),
-			HTMLURL:   template.URL(*comment.User.HTMLURL),
-		},
+		ID:        uint64(*comment.ID),
+		User:      ghUser(comment.User),
 		CreatedAt: *comment.CreatedAt,
 		Body:      *comment.Body,
 	}, nil
@@ -246,12 +222,8 @@ func (s service) Create(_ context.Context, rs issues.RepoSpec, i issues.Issue) (
 		State: issues.State(*issue.State),
 		Title: *issue.Title,
 		Comment: issues.Comment{
-			ID: issueDescriptionCommentID,
-			User: issues.User{
-				Login:     *issue.User.Login,
-				AvatarURL: template.URL(*issue.User.AvatarURL),
-				HTMLURL:   template.URL(*issue.User.HTMLURL),
-			},
+			ID:        issueDescriptionCommentID,
+			User:      ghUser(issue.User),
 			CreatedAt: *issue.CreatedAt,
 		},
 	}, nil
@@ -282,12 +254,8 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 		State: issues.State(*issue.State),
 		Title: *issue.Title,
 		Comment: issues.Comment{
-			ID: issueDescriptionCommentID,
-			User: issues.User{
-				Login:     *issue.User.Login,
-				AvatarURL: template.URL(*issue.User.AvatarURL),
-				HTMLURL:   template.URL(*issue.User.HTMLURL),
-			},
+			ID:        issueDescriptionCommentID,
+			User:      ghUser(issue.User),
 			CreatedAt: *issue.CreatedAt,
 		},
 	}, nil
@@ -310,12 +278,8 @@ func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, c
 		}
 
 		return issues.Comment{
-			ID: issueDescriptionCommentID,
-			User: issues.User{
-				Login:     *issue.User.Login,
-				AvatarURL: template.URL(*issue.User.AvatarURL),
-				HTMLURL:   template.URL(*issue.User.HTMLURL),
-			},
+			ID:        issueDescriptionCommentID,
+			User:      ghUser(issue.User),
 			CreatedAt: *issue.CreatedAt,
 			Body:      *issue.Body,
 		}, nil
@@ -330,12 +294,8 @@ func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, c
 	}
 
 	return issues.Comment{
-		ID: uint64(*comment.ID),
-		User: issues.User{
-			Login:     *comment.User.Login,
-			AvatarURL: template.URL(*comment.User.AvatarURL),
-			HTMLURL:   template.URL(*comment.User.HTMLURL),
-		},
+		ID:        uint64(*comment.ID),
+		User:      ghUser(comment.User),
 		CreatedAt: *comment.CreatedAt,
 		Body:      *comment.Body,
 	}, nil
@@ -363,5 +323,13 @@ func ghRepoSpec(repo issues.RepoSpec) repoSpec {
 	return repoSpec{
 		Owner: ownerRepo[0],
 		Repo:  ownerRepo[1],
+	}
+}
+
+func ghUser(user *github.User) issues.User {
+	return issues.User{
+		Login:     *user.Login,
+		AvatarURL: template.URL(*user.AvatarURL),
+		HTMLURL:   template.URL(*user.HTMLURL),
 	}
 }
