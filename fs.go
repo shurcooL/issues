@@ -261,6 +261,15 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 			Body:      i.Body,
 		},
 	}
+	if r := i.Reference; r != nil {
+		issue.Reference = &reference{
+			Repo:      r.Repo,
+			Path:      r.Path,
+			CommitID:  r.CommitID,
+			StartLine: r.StartLine,
+			EndLine:   r.EndLine,
+		}
+	}
 
 	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
 	if err != nil {
