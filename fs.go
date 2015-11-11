@@ -2,6 +2,7 @@
 package fs
 
 import (
+	"html/template"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -9,8 +10,10 @@ import (
 
 	"golang.org/x/net/context"
 	"sourcegraph.com/sourcegraph/go-sourcegraph/sourcegraph"
+	"sourcegraph.com/sourcegraph/vcsstore/vcsclient"
 	"src.sourcegraph.com/apps/issues/issues"
 	"src.sourcegraph.com/sourcegraph/platform/putil"
+	"src.sourcegraph.com/sourcegraph/util/htmlutil"
 )
 
 // NewService ...
@@ -120,6 +123,23 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 	if err != nil {
 		return issues.Issue{}, err
 	}
+
+	var ref *issues.Reference
+	if issue.Reference != nil {
+		contents, err := referenceContents(ctx, issue.Reference)
+		ref = &issues.Reference{
+			Repo:      issue.Reference.Repo,
+			Path:      issue.Reference.Path,
+			CommitID:  issue.Reference.CommitID,
+			StartLine: issue.Reference.StartLine,
+			EndLine:   issue.Reference.EndLine,
+			Contents:  contents,
+		}
+		if err != nil {
+			return issues.Issue{}, err
+		}
+	}
+
 	return issues.Issue{
 		ID:    id,
 		State: issue.State,
@@ -128,6 +148,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 			User:      sgUser(ctx, user),
 			CreatedAt: issue.CreatedAt,
 		},
+		Reference: ref,
 	}, nil
 }
 
@@ -450,3 +471,34 @@ func (service) CurrentUser(ctx context.Context) (issues.User, error) {
 }
 
 func formatUint64(n uint64) string { return strconv.FormatUint(n, 10) }
+
+func referenceContents(ctx context.Context, ref *reference) (template.HTML, error) {
+	sg := sourcegraph.NewClientFromContext(ctx)
+
+	f, err := sg.RepoTree.Get(ctx, &sourcegraph.RepoTreeGetOp{
+		Entry: sourcegraph.TreeEntrySpec{
+			Path: ref.Path,
+			RepoRev: sourcegraph.RepoRevSpec{
+				RepoSpec: sourcegraph.RepoSpec{
+					URI: ref.Repo.URI,
+				},
+				CommitID: ref.CommitID,
+			},
+		},
+		Opt: &sourcegraph.RepoTreeGetOptions{
+			Formatted: true,
+			GetFileOptions: vcsclient.GetFileOptions{
+				FileRange: vcsclient.FileRange{
+					StartLine: int64(ref.StartLine),
+					EndLine:   int64(ref.EndLine),
+				},
+			},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	sanitizedContents := htmlutil.SanitizeForPB(string(f.Contents)).HTML
+	return template.HTML(sanitizedContents), nil
+}
