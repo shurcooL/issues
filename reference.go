@@ -6,11 +6,10 @@ import (
 
 // Reference represents a reference to code.
 type Reference struct {
-	Repo RepoSpec
-	// Path is a relative, /-separated path to a file within a repo.
-	Path      string
+	Repo      RepoSpec
+	Path      string // Path is a relative, '/'-separated path to a file within a repo.
 	CommitID  string
-	StartLine int
-	EndLine   int
+	StartLine uint32
+	EndLine   uint32
 	Contents  template.HTML
 }
