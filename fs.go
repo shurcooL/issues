@@ -124,10 +124,13 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		return issues.Issue{}, err
 	}
 
-	var ref *issues.Reference
+	var reference *issues.Reference
 	if issue.Reference != nil {
 		contents, err := referenceContents(ctx, issue.Reference)
-		ref = &issues.Reference{
+		if err != nil {
+			return issues.Issue{}, err
+		}
+		reference = &issues.Reference{
 			Repo:      issue.Reference.Repo,
 			Path:      issue.Reference.Path,
 			CommitID:  issue.Reference.CommitID,
@@ -135,11 +138,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 			EndLine:   issue.Reference.EndLine,
 			Contents:  contents,
 		}
-		if err != nil {
-			return issues.Issue{}, err
-		}
 	}
-
 	return issues.Issue{
 		ID:    id,
 		State: issue.State,
@@ -148,7 +147,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 			User:      sgUser(ctx, user),
 			CreatedAt: issue.CreatedAt,
 		},
-		Reference: ref,
+		Reference: reference,
 	}, nil
 }
 
@@ -261,13 +260,13 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 			Body:      i.Body,
 		},
 	}
-	if r := i.Reference; r != nil {
+	if ref := i.Reference; ref != nil {
 		issue.Reference = &reference{
-			Repo:      r.Repo,
-			Path:      r.Path,
-			CommitID:  r.CommitID,
-			StartLine: r.StartLine,
-			EndLine:   r.EndLine,
+			Repo:      ref.Repo,
+			Path:      ref.Path,
+			CommitID:  ref.CommitID,
+			StartLine: ref.StartLine,
+			EndLine:   ref.EndLine,
 		}
 	}
 
@@ -484,13 +483,11 @@ func formatUint64(n uint64) string { return strconv.FormatUint(n, 10) }
 func referenceContents(ctx context.Context, ref *reference) (template.HTML, error) {
 	sg := sourcegraph.NewClientFromContext(ctx)
 
-	f, err := sg.RepoTree.Get(ctx, &sourcegraph.RepoTreeGetOp{
+	te, err := sg.RepoTree.Get(ctx, &sourcegraph.RepoTreeGetOp{
 		Entry: sourcegraph.TreeEntrySpec{
 			Path: ref.Path,
 			RepoRev: sourcegraph.RepoRevSpec{
-				RepoSpec: sourcegraph.RepoSpec{
-					URI: ref.Repo.URI,
-				},
+				RepoSpec: sourcegraph.RepoSpec{URI: ref.Repo.URI},
 				CommitID: ref.CommitID,
 			},
 		},
@@ -508,6 +505,6 @@ func referenceContents(ctx context.Context, ref *reference) (template.HTML, erro
 		return "", err
 	}
 
-	sanitizedContents := htmlutil.SanitizeForPB(string(f.Contents)).HTML
+	sanitizedContents := htmlutil.SanitizeForPB(string(te.Contents)).HTML
 	return template.HTML(sanitizedContents), nil
 }

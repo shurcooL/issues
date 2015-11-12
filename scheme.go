@@ -19,8 +19,8 @@ type reference struct {
 	Repo      issues.RepoSpec
 	Path      string
 	CommitID  string
-	StartLine int
-	EndLine   int
+	StartLine uint32
+	EndLine   uint32
 }
 
 // comment is an on-disk representation of a comment.
