@@ -477,13 +477,19 @@ func nextID(dir string) (uint64, error) {
 }
 
 // TODO.
-func (service) CurrentUser(ctx context.Context) (issues.User, error) {
-	sg := sourcegraph.NewClientFromContext(ctx)
-	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: putil.UserFromContext(ctx).UID})
-	if err != nil {
-		return issues.User{}, err
+func (service) CurrentUser(ctx context.Context) (*issues.User, error) {
+	user := putil.UserFromContext(ctx)
+	if user == nil {
+		// Not authenticated, no current user.
+		return nil, nil
 	}
-	return sgUser(ctx, user), nil
+	sg := sourcegraph.NewClientFromContext(ctx)
+	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: user.UID}) // TODO: Confirm this is needed (as in, it populates some previously-blank values that are required).
+	if err != nil {
+		return nil, err
+	}
+	u := sgUser(ctx, user)
+	return &u, nil
 }
 
 func formatUint64(n uint64) string { return strconv.FormatUint(n, 10) }

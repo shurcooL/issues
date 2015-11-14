@@ -15,7 +15,7 @@ func sgUser(ctx context.Context, user *sourcegraph.User) issues.User {
 	profile := *conf.AppURL(ctx)
 	profile.Path = "~" + user.Login // TODO: Perhaps tap into sourcegraph routers, so this logic is DRY.
 
-	// TODO: Neee to move this logic into Sourcegraph Users service and make it more complete/robust. For now, fall back to GitHub API in case if no user avatar.
+	// TODO: Need to move this logic into Sourcegraph Users service and make it more complete/robust. For now, fall back to GitHub API in case if no user avatar.
 	avatarURL := template.URL(user.AvatarURL)
 	if avatarURL == "" {
 		avatarURL = ghAvatarURL(user.Login)
