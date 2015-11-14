@@ -11,6 +11,7 @@ import (
 	"golang.org/x/net/context"
 	"sourcegraph.com/sourcegraph/go-sourcegraph/sourcegraph"
 	"sourcegraph.com/sourcegraph/vcsstore/vcsclient"
+	"sourcegraph.com/sqs/pbtypes"
 	"src.sourcegraph.com/apps/issues/issues"
 	"src.sourcegraph.com/sourcegraph/platform/putil"
 	"src.sourcegraph.com/sourcegraph/util/htmlutil"
@@ -216,6 +217,12 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 }
 
 func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
+	// CreateComment operation requires an authenticated user with read access.
+	currentUser := putil.UserFromContext(ctx)
+	if currentUser == nil {
+		return issues.Comment{}, os.ErrPermission
+	}
+
 	if err := c.Validate(); err != nil {
 		return issues.Comment{}, err
 	}
@@ -223,7 +230,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 	sg := sourcegraph.NewClientFromContext(ctx)
 
 	comment := comment{
-		AuthorUID: putil.UserFromContext(ctx).UID,
+		AuthorUID: currentUser.UID,
 		CreatedAt: time.Now(),
 		Body:      c.Body,
 	}
@@ -253,6 +260,12 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 }
 
 func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
+	// Create operation requires an authenticated user with read access.
+	currentUser := putil.UserFromContext(ctx)
+	if currentUser == nil {
+		return issues.Issue{}, os.ErrPermission
+	}
+
 	if err := i.Validate(); err != nil {
 		return issues.Issue{}, err
 	}
@@ -263,7 +276,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		State: issues.OpenState,
 		Title: i.Title,
 		comment: comment{
-			AuthorUID: putil.UserFromContext(ctx).UID,
+			AuthorUID: currentUser.UID,
 			CreatedAt: time.Now(),
 			Body:      i.Body,
 		},
@@ -319,7 +332,36 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	}, nil
 }
 
+// canEdit returns nil error if currentUser is authorized to edit an entry created by authorUID.
+// It returns os.ErrPermission or an error that happened in other cases.
+func canEdit(ctx context.Context, sg *sourcegraph.Client, currentUser *sourcegraph.User, authorUID int32) error {
+	if currentUser == nil {
+		// Not logged in, cannot edit anything.
+		return os.ErrPermission
+	}
+	if currentUser.UID == authorUID {
+		// If you're the author, you can always edit it.
+		return nil
+	}
+	perm, err := sg.Auth.GetPermissions(ctx, &pbtypes.Void{})
+	if err != nil {
+		return err
+	}
+	switch perm.Write {
+	case true:
+		// If you have write access (or greater), you can edit.
+		return nil
+	default:
+		return os.ErrPermission
+	}
+}
+
 func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, error) {
+	currentUser := putil.UserFromContext(ctx)
+	if currentUser == nil {
+		return issues.Issue{}, os.ErrPermission
+	}
+
 	if err := ir.Validate(); err != nil {
 		return issues.Issue{}, err
 	}
@@ -333,8 +375,12 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		return issues.Issue{}, err
 	}
 
+	// Authorization check.
+	if err := canEdit(ctx, sg, currentUser, issue.AuthorUID); err != nil {
+		return issues.Issue{}, err
+	}
+
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-	//       Or maybe not once this is used to do authz checks.
 	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
 	if err != nil {
 		return issues.Issue{}, err
@@ -362,7 +408,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		return issues.Issue{}, err
 	}
 	event := event{
-		ActorUID:  putil.UserFromContext(ctx).UID,
+		ActorUID:  currentUser.UID,
 		CreatedAt: time.Now(),
 	}
 	switch {
@@ -395,6 +441,11 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 }
 
 func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
+	currentUser := putil.UserFromContext(ctx)
+	if currentUser == nil {
+		return issues.Comment{}, os.ErrPermission
+	}
+
 	if err := c.Validate(); err != nil {
 		return issues.Comment{}, err
 	}
@@ -409,8 +460,12 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 			return issues.Comment{}, err
 		}
 
+		// Authorization check.
+		if err := canEdit(ctx, sg, currentUser, issue.AuthorUID); err != nil {
+			return issues.Comment{}, err
+		}
+
 		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-		//       Or maybe not once this is used to do authz checks.
 		user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
 		if err != nil {
 			return issues.Comment{}, err
@@ -440,8 +495,12 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		return issues.Comment{}, err
 	}
 
+	// Authorization check.
+	if err := canEdit(ctx, sg, currentUser, comment.AuthorUID); err != nil {
+		return issues.Comment{}, err
+	}
+
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-	//       Or maybe not once this is used to do authz checks.
 	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: comment.AuthorUID})
 	if err != nil {
 		return issues.Comment{}, err
