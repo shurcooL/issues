@@ -4,6 +4,8 @@ package github
 import (
 	"fmt"
 	"html/template"
+	"net/http"
+	"os"
 	"strings"
 
 	"github.com/google/go-github/github"
@@ -15,13 +17,27 @@ func NewService(client *github.Client) issues.Service {
 	if client == nil {
 		client = github.NewClient(nil)
 	}
-	return service{
+
+	s := service{
 		cl: client,
 	}
+
+	if user, _, err := client.Users.Get(""); err == nil {
+		u := ghUser(user)
+		s.currentUser = &u
+	} else if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == http.StatusUnauthorized {
+	} else {
+		s.currentUserErr = err
+	}
+
+	return s
 }
 
 type service struct {
 	cl *github.Client
+
+	currentUser    *issues.User
+	currentUserErr error
 }
 
 // We use 0 as a special ID for the comment that is the issue description. This comment is edited differently.
@@ -110,6 +126,30 @@ func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueLi
 	return count, nil
 }
 
+// canEdit returns nil error if currentUser is authorized to edit an entry created by authorUID.
+// It returns os.ErrPermission or an error that happened in other cases.
+func (s service) canEdit(repo repoSpec, authorLogin string) error {
+	if s.currentUser == nil {
+		// Not logged in, cannot edit anything.
+		return os.ErrPermission
+	}
+	if s.currentUser.Login == authorLogin {
+		// If you're the author, you can always edit it.
+		return nil
+	}
+	isCollaborator, _, err := s.cl.Repositories.IsCollaborator(repo.Owner, repo.Repo, s.currentUser.Login)
+	if err != nil {
+		return err
+	}
+	switch isCollaborator {
+	case true:
+		// If you have write access (or greater), you can edit.
+		return nil
+	default:
+		return os.ErrPermission
+	}
+}
+
 func (s service) Get(_ context.Context, rs issues.RepoSpec, id uint64) (issues.Issue, error) {
 	repo := ghRepoSpec(rs)
 	issue, _, err := s.cl.Issues.Get(repo.Owner, repo.Repo, int(id))
@@ -124,7 +164,7 @@ func (s service) Get(_ context.Context, rs issues.RepoSpec, id uint64) (issues.I
 		Comment: issues.Comment{
 			User:      ghUser(issue.User),
 			CreatedAt: *issue.CreatedAt,
-			Editable:  true, // TODO: Compute the actual value.
+			Editable:  nil == s.canEdit(repo, *issue.User.Login),
 		},
 	}, nil
 }
@@ -142,7 +182,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 		User:      ghUser(issue.User),
 		CreatedAt: *issue.CreatedAt,
 		Body:      *issue.Body,
-		Editable:  true, // TODO: Compute the actual value.
+		Editable:  nil == s.canEdit(repo, *issue.User.Login),
 	})
 
 	ghComments, _, err := s.cl.Issues.ListComments(repo.Owner, repo.Repo, int(id), nil) // TODO: Pagination.
@@ -155,7 +195,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 			User:      ghUser(comment.User),
 			CreatedAt: *comment.CreatedAt,
 			Body:      *comment.Body,
-			Editable:  true, // TODO: Compute the actual value.
+			Editable:  nil == s.canEdit(repo, *comment.User.Login),
 		})
 	}
 
@@ -288,7 +328,7 @@ func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, c
 		}, nil
 	}
 
-	// GitHub API uses comment ID and doesn't need issue ID. Commit IDs are unique per repo (not per issue).
+	// GitHub API uses comment ID and doesn't need issue ID. Comment IDs are unique per repo (not per issue).
 	comment, _, err := s.cl.Issues.EditComment(repo.Owner, repo.Repo, int(c.ID), &github.IssueComment{
 		Body: &c.Body,
 	})
@@ -304,13 +344,8 @@ func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, c
 	}, nil
 }
 
-func (service) CurrentUser(_ context.Context) (issues.User, error) {
-	// TODO: Get current user via GH api (if authed), etc.
-	return issues.User{
-		Login:     "shurcooL",
-		AvatarURL: "https://avatars.githubusercontent.com/u/1924134?v=3",
-		HTMLURL:   "https://github.com/shurcooL",
-	}, nil
+func (s service) CurrentUser(_ context.Context) (*issues.User, error) {
+	return s.currentUser, s.currentUserErr
 }
 
 type repoSpec struct {
