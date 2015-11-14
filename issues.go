@@ -29,7 +29,7 @@ type Service interface {
 	EditComment(ctx context.Context, repo RepoSpec, id uint64, comment Comment) (Comment, error)
 
 	// TODO: This doesn't belong here, does it?
-	CurrentUser(ctx context.Context) (User, error)
+	CurrentUser(ctx context.Context) (*User, error)
 }
 
 // Issue represents an issue on a repository.
