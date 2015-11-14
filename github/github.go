@@ -124,6 +124,7 @@ func (s service) Get(_ context.Context, rs issues.RepoSpec, id uint64) (issues.I
 		Comment: issues.Comment{
 			User:      ghUser(issue.User),
 			CreatedAt: *issue.CreatedAt,
+			Editable:  true, // TODO: Compute the actual value.
 		},
 	}, nil
 }
@@ -141,6 +142,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 		User:      ghUser(issue.User),
 		CreatedAt: *issue.CreatedAt,
 		Body:      *issue.Body,
+		Editable:  true, // TODO: Compute the actual value.
 	})
 
 	ghComments, _, err := s.cl.Issues.ListComments(repo.Owner, repo.Repo, int(id), nil) // TODO: Pagination.
@@ -153,6 +155,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 			User:      ghUser(comment.User),
 			CreatedAt: *comment.CreatedAt,
 			Body:      *comment.Body,
+			Editable:  true, // TODO: Compute the actual value.
 		})
 	}
 

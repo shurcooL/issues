@@ -39,7 +39,7 @@ type Issue struct {
 	Title string
 	Comment
 	Reference *Reference
-	Replies   int
+	Replies   int // Number of replies to this issue (not counting the mandatory issue description comment).
 }
 
 // Comment represents a comment left on an issue.
@@ -48,6 +48,7 @@ type Comment struct {
 	User      User
 	CreatedAt time.Time
 	Body      string
+	Editable  bool // Editable represents whether the current user (if any) can perform edit operations on this comment (or the encompassing issue).
 }
 
 // User represents a user.
@@ -58,10 +59,10 @@ type User struct {
 }
 
 // IssueRequest is a request to edit an issue.
+// To edit the body, use EditComment with comment ID 0.
 type IssueRequest struct {
 	State *State
 	Title *string
-	// TODO: Comment body.
 }
 
 // State represents the issue state.
