@@ -72,6 +72,18 @@ const (
 	ClosedState State = "closed"
 )
 
+func (i Issue) Validate() error {
+	if strings.TrimSpace(i.Title) == "" {
+		return fmt.Errorf("title can't be blank or all whitespace")
+	}
+	if ref := i.Reference; ref != nil {
+		if ref.CommitID == "" {
+			return fmt.Errorf("commit ID is required for reference")
+		}
+	}
+	return nil
+}
+
 func (ir IssueRequest) Validate() error {
 	if ir.State != nil {
 		switch *ir.State {
@@ -89,6 +101,7 @@ func (ir IssueRequest) Validate() error {
 }
 
 func (c Comment) Validate() error {
+	// TODO: Issue descriptions can have blank bodies, support that (primarily for editing comments).
 	if strings.TrimSpace(c.Body) == "" {
 		return fmt.Errorf("comment body can't be blank or all whitespace")
 	}
