@@ -216,6 +216,10 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 }
 
 func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
+	if err := c.Validate(); err != nil {
+		return issues.Comment{}, err
+	}
+
 	sg := sourcegraph.NewClientFromContext(ctx)
 
 	comment := comment{
@@ -249,6 +253,10 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 }
 
 func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
+	if err := i.Validate(); err != nil {
+		return issues.Issue{}, err
+	}
+
 	sg := sourcegraph.NewClientFromContext(ctx)
 
 	issue := issue{
