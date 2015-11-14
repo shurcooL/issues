@@ -112,6 +112,8 @@ func (s service) Count(_ context.Context, repo issues.RepoSpec, opt issues.Issue
 }
 
 func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issues.Issue, error) {
+	currentUser := putil.UserFromContext(ctx)
+
 	sg := sourcegraph.NewClientFromContext(ctx)
 
 	var issue issue
@@ -147,12 +149,15 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		Comment: issues.Comment{
 			User:      sgUser(ctx, user),
 			CreatedAt: issue.CreatedAt,
+			Editable:  nil == canEdit(ctx, sg, currentUser, issue.AuthorUID),
 		},
 		Reference: reference,
 	}, nil
 }
 
 func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
+	currentUser := putil.UserFromContext(ctx)
+
 	sg := sourcegraph.NewClientFromContext(ctx)
 
 	var comments []issues.Comment
@@ -178,6 +183,7 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			User:      sgUser(ctx, user),
 			CreatedAt: comment.CreatedAt,
 			Body:      comment.Body,
+			Editable:  nil == canEdit(ctx, sg, currentUser, comment.AuthorUID),
 		})
 	}
 
