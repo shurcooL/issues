@@ -12,7 +12,7 @@ import (
 	"sourcegraph.com/sourcegraph/go-sourcegraph/sourcegraph"
 	"sourcegraph.com/sourcegraph/vcsstore/vcsclient"
 	"sourcegraph.com/sqs/pbtypes"
-	"src.sourcegraph.com/apps/issues/issues"
+	"src.sourcegraph.com/apps/tracker/issues"
 	"src.sourcegraph.com/sourcegraph/platform/putil"
 	"src.sourcegraph.com/sourcegraph/util/htmlutil"
 )

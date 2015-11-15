@@ -3,7 +3,7 @@ package fs
 import (
 	"time"
 
-	"src.sourcegraph.com/apps/issues/issues"
+	"src.sourcegraph.com/apps/tracker/issues"
 )
 
 // issue is an on-disk representation of an issue.

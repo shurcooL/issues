@@ -6,7 +6,7 @@ import (
 	"github.com/google/go-github/github"
 	"golang.org/x/net/context"
 	"sourcegraph.com/sourcegraph/go-sourcegraph/sourcegraph"
-	"src.sourcegraph.com/apps/issues/issues"
+	"src.sourcegraph.com/apps/tracker/issues"
 	"src.sourcegraph.com/sourcegraph/conf"
 )
 
