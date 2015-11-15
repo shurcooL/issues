@@ -17,7 +17,7 @@ import (
 	"src.sourcegraph.com/sourcegraph/util/htmlutil"
 )
 
-// NewService ...
+// NewService creates a filesystem-backed issues.Service rooted at rootDir.
 func NewService(rootDir string) issues.Service {
 	return service{
 		root: rootDir,
@@ -31,7 +31,7 @@ type service struct {
 
 // dir returns the path to root of issue storage for the given repo.
 func (s service) dir(repo issues.RepoSpec) string {
-	return filepath.Join(s.root, filepath.FromSlash(repo.URI))
+	return filepath.Join(s.root, "threads", filepath.FromSlash(repo.URI))
 }
 
 func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
