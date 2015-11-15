@@ -13,6 +13,8 @@ import (
 	"src.sourcegraph.com/apps/issues/issues"
 )
 
+// NewService creates a GitHub-backed issues.Service using given GitHub client.
+// At this time it infers the current user from the client (its authentication info), and cannot be used to serve multiple users.
 func NewService(client *github.Client) issues.Service {
 	if client == nil {
 		client = github.NewClient(nil)
