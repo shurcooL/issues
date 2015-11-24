@@ -60,7 +60,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 			return is, err
 		}
 
-		if issue.State != opt.State {
+		if opt.State != issues.AllStates && issue.State != opt.State {
 			continue
 		}
 
@@ -108,7 +108,7 @@ func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.Iss
 			return 0, err
 		}
 
-		if issue.State != opt.State {
+		if opt.State != issues.AllStates && issue.State != opt.State {
 			continue
 		}
 
@@ -222,6 +222,7 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 			return events, err
 		}
 		events = append(events, issues.Event{
+			ID:        fi.ID,
 			Actor:     sgUser(ctx, user),
 			CreatedAt: event.CreatedAt,
 			Type:      event.Type,
@@ -411,10 +412,6 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 	// THINK: Is this the best place to do this? Should it be returned from this func? How would GH backend do it?
 	// Create event and commit to storage.
-	eventID, err := nextID(fs, path.Join(threadsDir, formatUint64(id), "events"))
-	if err != nil {
-		return issues.Issue{}, err
-	}
 	event := event{
 		ActorUID:  currentUser.UID,
 		CreatedAt: time.Now(),
@@ -430,6 +427,10 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 			From: origTitle,
 			To:   *ir.Title,
 		}
+	}
+	eventID, err := nextID(fs, path.Join(threadsDir, formatUint64(id), "events"))
+	if err != nil {
+		return issues.Issue{}, err
 	}
 	err = jsonEncodeFile(fs, path.Join(threadsDir, formatUint64(id), "events", formatUint64(eventID)), event)
 	if err != nil {
