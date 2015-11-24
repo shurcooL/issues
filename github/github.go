@@ -49,10 +49,12 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 	repo := ghRepoSpec(rs)
 	ghOpt := github.IssueListByRepoOptions{}
 	switch opt.State {
-	case issues.OpenState:
+	case issues.StateFilter(issues.OpenState):
 		// Do nothing, this is the GitHub default.
-	case issues.ClosedState:
+	case issues.StateFilter(issues.ClosedState):
 		ghOpt.State = "closed"
+	case issues.AllStates:
+		ghOpt.State = "all"
 	}
 	ghIssuesAndPRs, _, err := s.cl.Issues.ListByRepo(repo.Owner, repo.Repo, &ghOpt)
 	if err != nil {
@@ -83,16 +85,23 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 
 func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
 	repo := ghRepoSpec(rs)
+	var ghState string
+	switch opt.State {
+	case issues.StateFilter(issues.OpenState):
+		// Do nothing, this is the GitHub default.
+	case issues.StateFilter(issues.ClosedState):
+		ghState = "closed"
+	case issues.AllStates:
+		ghState = "all"
+	}
+
 	var count uint64
 
 	// Count Issues and PRs (since there appears to be no way to count just issues in GitHub API).
 	{
-		ghOpt := github.IssueListByRepoOptions{ListOptions: github.ListOptions{PerPage: 1}}
-		switch opt.State {
-		case issues.OpenState:
-			// Do nothing, this is the GitHub default.
-		case issues.ClosedState:
-			ghOpt.State = "closed"
+		ghOpt := github.IssueListByRepoOptions{
+			State:       ghState,
+			ListOptions: github.ListOptions{PerPage: 1},
 		}
 		ghIssuesAndPRs, ghIssuesAndPRsResp, err := s.cl.Issues.ListByRepo(repo.Owner, repo.Repo, &ghOpt)
 		if err != nil {
@@ -107,12 +116,9 @@ func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueLi
 
 	// Subtract PRs.
 	{
-		ghOpt := github.PullRequestListOptions{ListOptions: github.ListOptions{PerPage: 1}}
-		switch opt.State {
-		case issues.OpenState:
-			// Do nothing, this is the GitHub default.
-		case issues.ClosedState:
-			ghOpt.State = "closed"
+		ghOpt := github.PullRequestListOptions{
+			State:       ghState,
+			ListOptions: github.ListOptions{PerPage: 1},
 		}
 		ghPRs, ghPRsResp, err := s.cl.PullRequests.List(repo.Owner, repo.Repo, &ghOpt)
 		if err != nil {
@@ -218,6 +224,7 @@ func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, op
 			continue
 		}
 		e := issues.Event{
+			ID:        uint64(*event.ID),
 			Actor:     ghUser(event.Actor),
 			CreatedAt: *event.CreatedAt,
 			Type:      et,
@@ -373,6 +380,10 @@ func ghRepoSpec(repo issues.RepoSpec) repoSpec {
 
 func ghUser(user *github.User) issues.User {
 	return issues.User{
+		UserSpec: issues.UserSpec{
+			ID:     uint64(*user.ID),
+			Domain: "github.com",
+		},
 		Login:     *user.Login,
 		AvatarURL: template.URL(*user.AvatarURL),
 		HTMLURL:   template.URL(*user.HTMLURL),
