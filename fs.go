@@ -38,11 +38,6 @@ type service struct {
 	appName string
 }
 
-const (
-	// threadsDir is '/'-separated path for thread storage.
-	threadsDir = "threads"
-)
-
 func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
 	sg := sourcegraph.NewClientFromContext(ctx)
 	fs := storage.Namespace(s.appCtx, s.appName, repo.URI)

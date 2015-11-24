@@ -37,3 +37,8 @@ type event struct {
 	Type      issues.EventType
 	Rename    *issues.Rename `json:",omitempty"`
 }
+
+const (
+	// threadsDir is '/'-separated path for thread storage.
+	threadsDir = "threads"
+)
