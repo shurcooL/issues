@@ -193,18 +193,25 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 		Editable:  nil == s.canEdit(repo, *issue.User.Login),
 	})
 
-	ghComments, _, err := s.cl.Issues.ListComments(repo.Owner, repo.Repo, int(id), nil) // TODO: Pagination.
-	if err != nil {
-		return comments, err
-	}
-	for _, comment := range ghComments {
-		comments = append(comments, issues.Comment{
-			ID:        uint64(*comment.ID),
-			User:      ghUser(comment.User),
-			CreatedAt: *comment.CreatedAt,
-			Body:      *comment.Body,
-			Editable:  nil == s.canEdit(repo, *comment.User.Login),
-		})
+	ghOpt := &github.IssueListCommentsOptions{}
+	for {
+		ghComments, resp, err := s.cl.Issues.ListComments(repo.Owner, repo.Repo, int(id), ghOpt)
+		if err != nil {
+			return comments, err
+		}
+		for _, comment := range ghComments {
+			comments = append(comments, issues.Comment{
+				ID:        uint64(*comment.ID),
+				User:      ghUser(comment.User),
+				CreatedAt: *comment.CreatedAt,
+				Body:      *comment.Body,
+				Editable:  nil == s.canEdit(repo, *comment.User.Login),
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		ghOpt.ListOptions.Page = resp.NextPage
 	}
 
 	return comments, nil
