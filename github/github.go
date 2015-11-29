@@ -4,8 +4,11 @@ package github
 import (
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/google/go-github/github"
@@ -27,8 +30,13 @@ func NewService(client *github.Client) issues.Service {
 	if user, _, err := client.Users.Get(""); err == nil {
 		u := ghUser(user)
 		s.currentUser = &u
+		s.currentUserErr = nil
 	} else if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == http.StatusUnauthorized {
+		// There's no authenticated user.
+		s.currentUser = nil
+		s.currentUserErr = nil
 	} else {
+		s.currentUser = nil
 		s.currentUserErr = err
 	}
 
@@ -158,11 +166,68 @@ func (s service) canEdit(repo repoSpec, authorLogin string) error {
 	}
 }
 
+// TODO: Dedup.
+func parseIssueSpec(issueAPIURL string) (issues.RepoSpec, int, error) {
+	u, err := url.Parse(issueAPIURL)
+	if err != nil {
+		return issues.RepoSpec{}, 0, err
+	}
+	e := strings.Split(u.Path, "/")
+	if len(e) < 5 {
+		return issues.RepoSpec{}, 0, fmt.Errorf("unexpected path (too few elements): %q", u.Path)
+	}
+	if got, want := e[len(e)-2], "issues"; got != want {
+		return issues.RepoSpec{}, 0, fmt.Errorf(`unexpected path element %q, expecting %q`, got, want)
+	}
+	id, err := strconv.Atoi(e[len(e)-1])
+	if err != nil {
+		return issues.RepoSpec{}, 0, err
+	}
+	return issues.RepoSpec{URI: e[len(e)-4] + "/" + e[len(e)-3]}, id, nil
+}
+
+// markRead marks the specified issue as read.
+func (s service) markRead(repo repoSpec, id uint64) error {
+	ns, _, err := s.cl.Activity.ListRepositoryNotifications(repo.Owner, repo.Repo, nil)
+	if err != nil {
+		return fmt.Errorf("failed to ListRepositoryNotifications: %v", err)
+	}
+
+	for _, n := range ns {
+		if *n.Subject.Type != "Issue" {
+			continue
+		}
+		_, issueID, err := parseIssueSpec(*n.Subject.URL)
+		if err != nil {
+			return fmt.Errorf("failed to parseIssueSpec: %v", err)
+		}
+		if uint64(issueID) != id {
+			continue
+		}
+
+		_, err = s.cl.Activity.MarkThreadRead(*n.ID)
+		if err != nil {
+			return fmt.Errorf("failed to MarkThreadRead: %v", err)
+		}
+		break
+	}
+
+	return nil
+}
+
 func (s service) Get(_ context.Context, rs issues.RepoSpec, id uint64) (issues.Issue, error) {
 	repo := ghRepoSpec(rs)
 	issue, _, err := s.cl.Issues.Get(repo.Owner, repo.Repo, int(id))
 	if err != nil {
 		return issues.Issue{}, err
+	}
+
+	if s.currentUser != nil {
+		// Mark as read.
+		err = s.markRead(repo, id)
+		if err != nil {
+			log.Println("service.Get: failed to markRead:", err)
+		}
 	}
 
 	return issues.Issue{
