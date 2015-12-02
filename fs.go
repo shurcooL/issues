@@ -274,7 +274,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 	comment := comment{
 		AuthorUID: currentUser.UID,
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
 		Body:      c.Body,
 	}
 
@@ -324,7 +324,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		Title: i.Title,
 		comment: comment{
 			AuthorUID: currentUser.UID,
-			CreatedAt: time.Now(),
+			CreatedAt: time.Now().UTC(),
 			Body:      i.Body,
 		},
 	}
@@ -449,7 +449,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	// Create event and commit to storage.
 	event := event{
 		ActorUID:  currentUser.UID,
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
 	}
 	switch {
 	case ir.State != nil && *ir.State == issues.OpenState:
