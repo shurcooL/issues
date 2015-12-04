@@ -30,7 +30,7 @@ type Service interface {
 	CreateComment(ctx context.Context, repo RepoSpec, id uint64, comment Comment) (Comment, error)
 
 	Edit(ctx context.Context, repo RepoSpec, id uint64, ir IssueRequest) (Issue, error)
-	EditComment(ctx context.Context, repo RepoSpec, id uint64, comment Comment) (Comment, error)
+	EditComment(ctx context.Context, repo RepoSpec, id uint64, cr CommentRequest) (Comment, error)
 
 	// TODO: This doesn't belong here, does it?
 	CurrentUser(ctx context.Context) (*User, error)
@@ -79,6 +79,16 @@ type IssueRequest struct {
 	Title *string
 }
 
+// EmojiID is the id of a reaction. For example, ":+1:".
+type EmojiID string
+
+// CommentRequest is a request to edit a comment.
+type CommentRequest struct {
+	ID       uint64
+	Body     *string  // If not nil, set the body.
+	Reaction *EmojiID // If not nil, toggle this reaction.
+}
+
 // State represents the issue state.
 type State string
 
@@ -119,6 +129,21 @@ func (c Comment) Validate() error {
 	// TODO: Issue descriptions can have blank bodies, support that (primarily for editing comments).
 	if strings.TrimSpace(c.Body) == "" {
 		return fmt.Errorf("comment body can't be blank or all whitespace")
+	}
+	return nil
+}
+
+func (cr CommentRequest) Validate() error {
+	if cr.Body != nil {
+		// TODO: Issue descriptions can have blank bodies, support that (primarily for editing comments).
+		if strings.TrimSpace(*cr.Body) == "" {
+			return fmt.Errorf("comment body can't be blank or all whitespace")
+		}
+	}
+	if cr.Reaction != nil {
+		// TODO: Maybe validate that the emojiID is one of supported ones.
+		//       Or maybe not (unsupported ones can be handled by frontend component).
+		//       That way custom emoji can be added/removed, etc. Figure out what the best thing to do is and do it.
 	}
 	return nil
 }
