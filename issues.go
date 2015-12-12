@@ -56,7 +56,14 @@ type Comment struct {
 	User      User
 	CreatedAt time.Time
 	Body      string
+	Reactions []Reaction
 	Editable  bool // Editable represents whether the current user (if any) can perform edit operations on this comment (or the encompassing issue).
+}
+
+// Reaction represents a single reaction to a comment, backed by 1 or more users.
+type Reaction struct {
+	Reaction EmojiID
+	Users    []User // Length is 1 or more.
 }
 
 type UserSpec struct {
