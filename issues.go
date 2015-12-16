@@ -86,7 +86,7 @@ type IssueRequest struct {
 	Title *string
 }
 
-// EmojiID is the id of a reaction. For example, ":+1:".
+// EmojiID is the id of a reaction. For example, "+1".
 type EmojiID string
 
 // CommentRequest is a request to edit a comment.
