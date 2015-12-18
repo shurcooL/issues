@@ -140,11 +140,15 @@ func (c Comment) Validate() error {
 	return nil
 }
 
-func (cr CommentRequest) Validate() error {
+// Validate validates the comment edit request, returning an non-nil error if it's invalid.
+// Returned requiresEdit is true if the edit request needs edit rights, and false if it can be done by anyone that can react.
+func (cr CommentRequest) Validate() (requiresEdit bool, err error) {
 	if cr.Body != nil {
+		requiresEdit = true
+
 		// TODO: Issue descriptions can have blank bodies, support that (primarily for editing comments).
 		if strings.TrimSpace(*cr.Body) == "" {
-			return fmt.Errorf("comment body can't be blank or all whitespace")
+			return requiresEdit, fmt.Errorf("comment body can't be blank or all whitespace")
 		}
 	}
 	if cr.Reaction != nil {
@@ -152,5 +156,5 @@ func (cr CommentRequest) Validate() error {
 		//       Or maybe not (unsupported ones can be handled by frontend component).
 		//       That way custom emoji can be added/removed, etc. Figure out what the best thing to do is and do it.
 	}
-	return nil
+	return requiresEdit, nil
 }
