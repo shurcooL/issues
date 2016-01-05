@@ -114,9 +114,12 @@ type SearchOptions struct {
 }
 
 type SearchResult struct {
-	ID      string
-	Title   template.HTML
-	Comment template.HTML
+	ID        string
+	Title     template.HTML
+	Comment   template.HTML
+	User      User
+	CreatedAt time.Time
+	State     State
 }
 
 type SearchResponse struct {
