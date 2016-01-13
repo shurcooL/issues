@@ -2,7 +2,7 @@
 package fs
 
 import (
-	"html/template"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,12 +10,7 @@ import (
 
 	"golang.org/x/net/context"
 	"golang.org/x/net/webdav"
-	"sourcegraph.com/sourcegraph/vcsstore/vcsclient"
-	"sourcegraph.com/sqs/pbtypes"
 	"src.sourcegraph.com/apps/tracker/issues"
-	"src.sourcegraph.com/sourcegraph/go-sourcegraph/sourcegraph"
-	"src.sourcegraph.com/sourcegraph/platform/putil"
-	"src.sourcegraph.com/sourcegraph/util/htmlutil"
 )
 
 // NewService creates a virtual filesystem-backed issues.Service using root for storage.
@@ -49,11 +44,10 @@ func (s service) namespace(repoURI string) webdav.FileSystem {
 func (s service) createNamespace(repoURI string) error {
 	// Only needed for first issue in the repo.
 	// TODO: Can this be better?
-	return os.MkdirAll(filepath.Join(s.root, "repo", filepath.FromSlash(repoURI), "tracker"), 0755)
+	return os.MkdirAll(filepath.Join(s.root, "repo", filepath.FromSlash(repoURI), "tracker", issuesDir), 0755)
 }
 
 func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
-	sg := sourcegraph.NewClientFromContext(ctx)
 	fs := s.namespace(repo.URI)
 
 	var is []issues.Issue
@@ -83,21 +77,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 		if err != nil {
 			return is, err
 		}
-		user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
-		if err != nil {
-			return is, err
-		}
-		// HACK.
-		/*var reference *issues.Reference
-		if issue.Reference != nil {
-			reference = &issues.Reference{
-				Repo:      issue.Reference.Repo,
-				Path:      issue.Reference.Path,
-				CommitID:  issue.Reference.CommitID,
-				StartLine: issue.Reference.StartLine,
-				EndLine:   issue.Reference.EndLine,
-			}
-		}*/
+		user := issues.UserSpec{ID: uint64(issue.AuthorUID)}
 		is = append(is, issues.Issue{
 			ID:    dir.ID,
 			State: issue.State,
@@ -107,8 +87,6 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 				CreatedAt: issue.CreatedAt,
 			},
 			Replies: len(comments) - 1,
-
-			//Reference: reference, // HACK.
 		})
 	}
 
@@ -146,9 +124,8 @@ func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.Iss
 }
 
 func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issues.Issue, error) {
-	currentUser := putil.UserFromContext(ctx)
+	currentUser := (*issues.UserSpec)(nil) // TODO.
 
-	sg := sourcegraph.NewClientFromContext(ctx)
 	fs := s.namespace(repo.URI)
 
 	var issue issue
@@ -157,26 +134,8 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		return issues.Issue{}, err
 	}
 
-	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
-	if err != nil {
-		return issues.Issue{}, err
-	}
+	user := issues.UserSpec{ID: uint64(issue.AuthorUID)}
 
-	var reference *issues.Reference
-	if issue.Reference != nil {
-		contents, err := referenceContents(ctx, issue.Reference)
-		if err != nil {
-			return issues.Issue{}, err
-		}
-		reference = &issues.Reference{
-			Repo:      issue.Reference.Repo,
-			Path:      issue.Reference.Path,
-			CommitID:  issue.Reference.CommitID,
-			StartLine: issue.Reference.StartLine,
-			EndLine:   issue.Reference.EndLine,
-			Contents:  contents,
-		}
-	}
 	return issues.Issue{
 		ID:    id,
 		State: issue.State,
@@ -184,16 +143,14 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		Comment: issues.Comment{
 			User:      sgUser(ctx, user),
 			CreatedAt: issue.CreatedAt,
-			Editable:  nil == canEdit(ctx, sg, currentUser, issue.AuthorUID),
+			Editable:  nil == canEdit(ctx, currentUser, issue.AuthorUID),
 		},
-		Reference: reference,
 	}, nil
 }
 
 func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
-	currentUser := putil.UserFromContext(ctx)
+	currentUser := (*issues.UserSpec)(nil) // TODO.
 
-	sg := sourcegraph.NewClientFromContext(ctx)
 	fs := s.namespace(repo.URI)
 
 	var comments []issues.Comment
@@ -209,16 +166,13 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			return comments, err
 		}
 
-		user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: comment.AuthorUID})
-		if err != nil {
-			return comments, err
-		}
+		user := issues.UserSpec{ID: uint64(comment.AuthorUID)}
 		comments = append(comments, issues.Comment{
 			ID:        fi.ID,
 			User:      sgUser(ctx, user),
 			CreatedAt: comment.CreatedAt,
 			Body:      comment.Body,
-			Editable:  nil == canEdit(ctx, sg, currentUser, comment.AuthorUID),
+			Editable:  nil == canEdit(ctx, currentUser, comment.AuthorUID),
 		})
 	}
 
@@ -226,7 +180,6 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 }
 
 func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
-	sg := sourcegraph.NewClientFromContext(ctx)
 	fs := s.namespace(repo.URI)
 
 	var events []issues.Event
@@ -242,10 +195,7 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 			return events, err
 		}
 
-		user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: event.ActorUID})
-		if err != nil {
-			return events, err
-		}
+		user := issues.UserSpec{ID: uint64(event.ActorUID)}
 		events = append(events, issues.Event{
 			ID:        fi.ID,
 			Actor:     sgUser(ctx, user),
@@ -260,7 +210,7 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 
 func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
 	// CreateComment operation requires an authenticated user with read access.
-	currentUser := putil.UserFromContext(ctx)
+	currentUser := (*issues.UserSpec)(nil) // TODO.
 	if currentUser == nil {
 		return issues.Comment{}, os.ErrPermission
 	}
@@ -269,19 +219,15 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 		return issues.Comment{}, err
 	}
 
-	sg := sourcegraph.NewClientFromContext(ctx)
 	fs := s.namespace(repo.URI)
 
 	comment := comment{
-		AuthorUID: currentUser.UID,
+		AuthorUID: int32(currentUser.ID),
 		CreatedAt: time.Now().UTC(),
 		Body:      c.Body,
 	}
 
-	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: comment.AuthorUID})
-	if err != nil {
-		return issues.Comment{}, err
-	}
+	user := issues.UserSpec{ID: uint64(comment.AuthorUID)}
 
 	// Commit to storage.
 	commentID, err := nextID(fs, issueDir(id))
@@ -304,7 +250,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
 	// Create operation requires an authenticated user with read access.
-	currentUser := putil.UserFromContext(ctx)
+	currentUser := (*issues.UserSpec)(nil) // TODO.
 	if currentUser == nil {
 		return issues.Issue{}, os.ErrPermission
 	}
@@ -313,7 +259,10 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		return issues.Issue{}, err
 	}
 
-	sg := sourcegraph.NewClientFromContext(ctx)
+	if i.Reference != nil {
+		return issues.Issue{}, errors.New("Reference not supported in fs service implementation")
+	}
+
 	if err := s.createNamespace(repo.URI); err != nil {
 		return issues.Issue{}, err
 	}
@@ -323,25 +272,13 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		State: issues.OpenState,
 		Title: i.Title,
 		comment: comment{
-			AuthorUID: currentUser.UID,
+			AuthorUID: int32(currentUser.ID),
 			CreatedAt: time.Now().UTC(),
 			Body:      i.Body,
 		},
 	}
-	if ref := i.Reference; ref != nil {
-		issue.Reference = &reference{
-			Repo:      ref.Repo,
-			Path:      ref.Path,
-			CommitID:  ref.CommitID,
-			StartLine: ref.StartLine,
-			EndLine:   ref.EndLine,
-		}
-	}
 
-	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
-	if err != nil {
-		return issues.Issue{}, err
-	}
+	user := issues.UserSpec{ID: uint64(issue.AuthorUID)}
 
 	// Commit to storage.
 	issueID, err := nextID(fs, issuesDir)
@@ -377,19 +314,16 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 
 // canEdit returns nil error if currentUser is authorized to edit an entry created by authorUID.
 // It returns os.ErrPermission or an error that happened in other cases.
-func canEdit(ctx context.Context, sg *sourcegraph.Client, currentUser *sourcegraph.UserSpec, authorUID int32) error {
+func canEdit(ctx context.Context, currentUser *issues.UserSpec, authorUID int32) error {
 	if currentUser == nil {
 		// Not logged in, cannot edit anything.
 		return os.ErrPermission
 	}
-	if currentUser.UID == authorUID {
+	if int32(currentUser.ID) == authorUID {
 		// If you're the author, you can always edit it.
 		return nil
 	}
-	authInfo, err := sg.Auth.Identify(ctx, &pbtypes.Void{})
-	if err != nil {
-		return err
-	}
+	authInfo := struct{ Write bool }{} // TODO.
 	switch authInfo.Write {
 	case true:
 		// If you have write access (or greater), you can edit.
@@ -400,7 +334,7 @@ func canEdit(ctx context.Context, sg *sourcegraph.Client, currentUser *sourcegra
 }
 
 func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, error) {
-	currentUser := putil.UserFromContext(ctx)
+	currentUser := (*issues.UserSpec)(nil) // TODO.
 	if currentUser == nil {
 		return issues.Issue{}, os.ErrPermission
 	}
@@ -409,7 +343,6 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		return issues.Issue{}, err
 	}
 
-	sg := sourcegraph.NewClientFromContext(ctx)
 	fs := s.namespace(repo.URI)
 
 	// Get from storage.
@@ -420,15 +353,12 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 
 	// Authorization check.
-	if err := canEdit(ctx, sg, currentUser, issue.AuthorUID); err != nil {
+	if err := canEdit(ctx, currentUser, issue.AuthorUID); err != nil {
 		return issues.Issue{}, err
 	}
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
-	if err != nil {
-		return issues.Issue{}, err
-	}
+	user := issues.UserSpec{ID: uint64(issue.AuthorUID)}
 
 	// Apply edits.
 	if ir.State != nil {
@@ -448,7 +378,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	// THINK: Is this the best place to do this? Should it be returned from this func? How would GH backend do it?
 	// Create event and commit to storage.
 	event := event{
-		ActorUID:  currentUser.UID,
+		ActorUID:  int32(currentUser.ID),
 		CreatedAt: time.Now().UTC(),
 	}
 	switch {
@@ -485,20 +415,23 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}, nil
 }
 
-func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
-	currentUser := putil.UserFromContext(ctx)
+func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
+	currentUser := (*issues.UserSpec)(nil) // TODO.
 	if currentUser == nil {
 		return issues.Comment{}, os.ErrPermission
 	}
 
-	if err := c.Validate(); err != nil {
+	if _, err := cr.Validate(); err != nil {
 		return issues.Comment{}, err
 	}
 
-	sg := sourcegraph.NewClientFromContext(ctx)
+	if cr.Body == nil {
+		return issues.Comment{}, errors.New("unsupported EditComment request for fs service implementation")
+	}
+
 	fs := s.namespace(repo.URI)
 
-	if c.ID == 0 {
+	if cr.ID == 0 {
 		// Get from storage.
 		var issue issue
 		err := jsonDecodeFile(fs, issueCommentPath(id, 0), &issue)
@@ -507,18 +440,15 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		}
 
 		// Authorization check.
-		if err := canEdit(ctx, sg, currentUser, issue.AuthorUID); err != nil {
+		if err := canEdit(ctx, currentUser, issue.AuthorUID); err != nil {
 			return issues.Comment{}, err
 		}
 
 		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-		user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: issue.AuthorUID})
-		if err != nil {
-			return issues.Comment{}, err
-		}
+		user := issues.UserSpec{ID: uint64(issue.AuthorUID)}
 
 		// Apply edits.
-		issue.Body = c.Body
+		issue.Body = *cr.Body
 
 		// Commit to storage.
 		err = jsonEncodeFile(fs, issueCommentPath(id, 0), issue)
@@ -537,33 +467,30 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 	// Get from storage.
 	var comment comment
-	err := jsonDecodeFile(fs, issueCommentPath(id, c.ID), &comment)
+	err := jsonDecodeFile(fs, issueCommentPath(id, cr.ID), &comment)
 	if err != nil {
 		return issues.Comment{}, err
 	}
 
 	// Authorization check.
-	if err := canEdit(ctx, sg, currentUser, comment.AuthorUID); err != nil {
+	if err := canEdit(ctx, currentUser, comment.AuthorUID); err != nil {
 		return issues.Comment{}, err
 	}
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-	user, err := sg.Users.Get(ctx, &sourcegraph.UserSpec{UID: comment.AuthorUID})
-	if err != nil {
-		return issues.Comment{}, err
-	}
+	user := issues.UserSpec{ID: uint64(comment.AuthorUID)}
 
 	// Apply edits.
-	comment.Body = c.Body
+	comment.Body = *cr.Body
 
 	// Commit to storage.
-	err = jsonEncodeFile(fs, issueCommentPath(id, c.ID), comment)
+	err = jsonEncodeFile(fs, issueCommentPath(id, cr.ID), comment)
 	if err != nil {
 		return issues.Comment{}, err
 	}
 
 	return issues.Comment{
-		ID:        c.ID,
+		ID:        cr.ID,
 		User:      sgUser(ctx, user),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
@@ -583,49 +510,15 @@ func nextID(fs webdav.FileSystem, dir string) (uint64, error) {
 	return fis[len(fis)-1].ID + 1, nil
 }
 
+func (s service) Search(_ context.Context, opt issues.SearchOptions) (issues.SearchResponse, error) {
+	return issues.SearchResponse{}, errors.New("Search endpoint not implemented in fs service implementation")
+}
+
 // TODO.
 func (service) CurrentUser(ctx context.Context) (*issues.User, error) {
-	userSpec := putil.UserFromContext(ctx)
-	if userSpec == nil {
-		// Not authenticated, no current user.
-		return nil, nil
-	}
-	sg := sourcegraph.NewClientFromContext(ctx)
-	user, err := sg.Users.Get(ctx, userSpec)
-	if err != nil {
-		return nil, err
-	}
+	user := issues.UserSpec{ID: uint64(0)}
 	u := sgUser(ctx, user)
 	return &u, nil
 }
 
 func formatUint64(n uint64) string { return strconv.FormatUint(n, 10) }
-
-func referenceContents(ctx context.Context, ref *reference) (template.HTML, error) {
-	sg := sourcegraph.NewClientFromContext(ctx)
-
-	te, err := sg.RepoTree.Get(ctx, &sourcegraph.RepoTreeGetOp{
-		Entry: sourcegraph.TreeEntrySpec{
-			Path: ref.Path,
-			RepoRev: sourcegraph.RepoRevSpec{
-				RepoSpec: sourcegraph.RepoSpec{URI: ref.Repo.URI},
-				CommitID: ref.CommitID,
-			},
-		},
-		Opt: &sourcegraph.RepoTreeGetOptions{
-			Formatted: true,
-			GetFileOptions: vcsclient.GetFileOptions{
-				FileRange: vcsclient.FileRange{
-					StartLine: int64(ref.StartLine),
-					EndLine:   int64(ref.EndLine),
-				},
-			},
-		},
-	})
-	if err != nil {
-		return "", err
-	}
-
-	sanitizedContents := htmlutil.SanitizeForPB(string(te.Contents)).HTML
-	return template.HTML(sanitizedContents), nil
-}

@@ -41,7 +41,7 @@ type event struct {
 
 const (
 	// issuesDir is '/'-separated path for issue storage.
-	issuesDir = "threads"
+	issuesDir = "issues"
 
 	// eventsDir is dir name for issue events.
 	eventsDir = "events"
