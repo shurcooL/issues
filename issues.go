@@ -34,7 +34,7 @@ type Service interface {
 
 	Search(ctx context.Context, opt SearchOptions) (SearchResponse, error)
 
-	// TODO: This doesn't belong here, does it?
+	// TODO: This doesn't belong here; it should be factored out into a platform Users service that is provided to this service.
 	CurrentUser(ctx context.Context) (*User, error)
 }
 
