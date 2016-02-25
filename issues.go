@@ -55,7 +55,8 @@ type Service interface {
 // CopierFrom is an optional interface that allows copying issues between services.
 type CopierFrom interface {
 	// CopyFrom copies all issues from src for specified repo.
-	CopyFrom(src Service, repo RepoSpec) error
+	// ctx should provide permission to access all issues in src.
+	CopyFrom(ctx context.Context, src Service, repo RepoSpec) error
 }
 
 // Issue represents an issue on a repository.
