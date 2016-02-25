@@ -77,13 +77,13 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 		if err != nil {
 			return is, err
 		}
-		user := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+		author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
 		is = append(is, issues.Issue{
 			ID:    dir.ID,
 			State: issue.State,
 			Title: issue.Title,
 			Comment: issues.Comment{
-				User:      sgUser(ctx, user),
+				User:      sgUser(ctx, author),
 				CreatedAt: issue.CreatedAt,
 			},
 			Replies: len(comments) - 1,
@@ -134,14 +134,14 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		return issues.Issue{}, err
 	}
 
-	user := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+	author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
 
 	return issues.Issue{
 		ID:    id,
 		State: issue.State,
 		Title: issue.Title,
 		Comment: issues.Comment{
-			User:      sgUser(ctx, user),
+			User:      sgUser(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Editable:  nil == canEdit(ctx, currentUser, issue.AuthorUID),
 		},
@@ -166,10 +166,10 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			return comments, err
 		}
 
-		user := issues.UserSpec{ID: uint64(comment.AuthorUID)}
+		author := issues.UserSpec{ID: uint64(comment.AuthorUID)}
 		comments = append(comments, issues.Comment{
 			ID:        fi.ID,
-			User:      sgUser(ctx, user),
+			User:      sgUser(ctx, author),
 			CreatedAt: comment.CreatedAt,
 			Body:      comment.Body,
 			Editable:  nil == canEdit(ctx, currentUser, comment.AuthorUID),
@@ -195,10 +195,10 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 			return events, err
 		}
 
-		user := issues.UserSpec{ID: uint64(event.ActorUID)}
+		actor := issues.UserSpec{ID: uint64(event.ActorUID)}
 		events = append(events, issues.Event{
 			ID:        fi.ID,
-			Actor:     sgUser(ctx, user),
+			Actor:     sgUser(ctx, actor),
 			CreatedAt: event.CreatedAt,
 			Type:      event.Type,
 			Rename:    event.Rename,
@@ -227,7 +227,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 		Body:      c.Body,
 	}
 
-	user := issues.UserSpec{ID: uint64(comment.AuthorUID)}
+	author := issues.UserSpec{ID: uint64(comment.AuthorUID)}
 
 	// Commit to storage.
 	commentID, err := nextID(fs, issueDir(id))
@@ -241,7 +241,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 	return issues.Comment{
 		ID:        commentID,
-		User:      sgUser(ctx, user),
+		User:      sgUser(ctx, author),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
 		Editable:  true, // You can always edit comments you've created.
@@ -278,7 +278,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		},
 	}
 
-	user := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+	author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
 
 	// Commit to storage.
 	issueID, err := nextID(fs, issuesDir)
@@ -304,7 +304,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		Title: issue.Title,
 		Comment: issues.Comment{
 			ID:        0,
-			User:      sgUser(ctx, user),
+			User:      sgUser(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Body:      issue.Body,
 			Editable:  true, // You can always edit issues you've created.
@@ -358,7 +358,8 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-	user := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+	author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+	actor := currentUser
 
 	// Apply edits.
 	if ir.State != nil {
@@ -377,16 +378,21 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 	// THINK: Is this the best place to do this? Should it be returned from this func? How would GH backend do it?
 	// Create event and commit to storage.
+	createdAt := time.Now().UTC()
 	event := event{
 		ActorUID:  int32(currentUser.ID),
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: createdAt,
 	}
+	// TODO: A single edit operation can result in multiple events, we should emit multiple events in such cases. We're currently emitting at most one event.
 	switch {
-	case ir.State != nil && *ir.State == issues.OpenState:
-		event.Type = issues.Reopened
-	case ir.State != nil && *ir.State == issues.ClosedState:
-		event.Type = issues.Closed
-	case ir.Title != nil:
+	case ir.State != nil && *ir.State != origState:
+		switch *ir.State {
+		case issues.OpenState:
+			event.Type = issues.Reopened
+		case issues.ClosedState:
+			event.Type = issues.Closed
+		}
+	case ir.Title != nil && *ir.Title != origTitle:
 		event.Type = issues.Renamed
 		event.Rename = &issues.Rename{
 			From: origTitle,
@@ -394,22 +400,24 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		}
 	}
 	var events []issues.Event
-	eventID, err := nextID(fs, issueEventsDir(id))
-	if err != nil {
-		return issues.Issue{}, nil, err
+	if event.Type != "" {
+		eventID, err := nextID(fs, issueEventsDir(id))
+		if err != nil {
+			return issues.Issue{}, nil, err
+		}
+		err = jsonEncodeFile(fs, issueEventPath(id, eventID), event)
+		if err != nil {
+			return issues.Issue{}, nil, err
+		}
+
+		events = append(events, issues.Event{
+			ID:        eventID,
+			Actor:     sgUser(ctx, actor),
+			CreatedAt: event.CreatedAt,
+			Type:      event.Type,
+			Rename:    event.Rename,
+		})
 	}
-	err = jsonEncodeFile(fs, issueEventPath(id, eventID), event)
-	if err != nil {
-		return issues.Issue{}, nil, err
-	}
-	// TODO: Populate events.
-	/*events = append(events, issues.Event{
-		ID:        eventID,
-		Actor:     sgUser(ctx, actor),
-		CreatedAt: event.CreatedAt,
-		Type:      event.Type,
-		Rename:    event.Rename,
-	})*/
 
 	return issues.Issue{
 		ID:    id,
@@ -417,7 +425,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		Title: issue.Title,
 		Comment: issues.Comment{
 			ID:        0,
-			User:      sgUser(ctx, user),
+			User:      sgUser(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Editable:  true, // You can always edit issues you've edited.
 		},
@@ -454,7 +462,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		}
 
 		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-		user := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+		author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
 
 		// Apply edits.
 		issue.Body = *cr.Body
@@ -467,7 +475,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 		return issues.Comment{
 			ID:        0,
-			User:      sgUser(ctx, user),
+			User:      sgUser(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Body:      issue.Body,
 			Editable:  true, // You can always edit comments you've edited.
@@ -487,7 +495,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	}
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-	user := issues.UserSpec{ID: uint64(comment.AuthorUID)}
+	author := issues.UserSpec{ID: uint64(comment.AuthorUID)}
 
 	// Apply edits.
 	comment.Body = *cr.Body
@@ -500,7 +508,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 	return issues.Comment{
 		ID:        cr.ID,
-		User:      sgUser(ctx, user),
+		User:      sgUser(ctx, author),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
 		Editable:  true, // You can always edit comments you've edited.
