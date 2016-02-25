@@ -333,14 +333,14 @@ func canEdit(ctx context.Context, currentUser *issues.UserSpec, authorUID int32)
 	}
 }
 
-func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, error) {
+func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
 	currentUser := (*issues.UserSpec)(nil) // TODO.
 	if currentUser == nil {
-		return issues.Issue{}, os.ErrPermission
+		return issues.Issue{}, nil, os.ErrPermission
 	}
 
 	if err := ir.Validate(); err != nil {
-		return issues.Issue{}, err
+		return issues.Issue{}, nil, err
 	}
 
 	fs := s.namespace(repo.URI)
@@ -349,12 +349,12 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	var issue issue
 	err := jsonDecodeFile(fs, issueCommentPath(id, 0), &issue)
 	if err != nil {
-		return issues.Issue{}, err
+		return issues.Issue{}, nil, err
 	}
 
 	// Authorization check.
 	if err := canEdit(ctx, currentUser, issue.AuthorUID); err != nil {
-		return issues.Issue{}, err
+		return issues.Issue{}, nil, err
 	}
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
@@ -372,7 +372,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	// Commit to storage.
 	err = jsonEncodeFile(fs, issueCommentPath(id, 0), issue)
 	if err != nil {
-		return issues.Issue{}, err
+		return issues.Issue{}, nil, err
 	}
 
 	// THINK: Is this the best place to do this? Should it be returned from this func? How would GH backend do it?
@@ -393,14 +393,23 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 			To:   *ir.Title,
 		}
 	}
+	var events []issues.Event
 	eventID, err := nextID(fs, issueEventsDir(id))
 	if err != nil {
-		return issues.Issue{}, err
+		return issues.Issue{}, nil, err
 	}
 	err = jsonEncodeFile(fs, issueEventPath(id, eventID), event)
 	if err != nil {
-		return issues.Issue{}, err
+		return issues.Issue{}, nil, err
 	}
+	// TODO: Populate events.
+	/*events = append(events, issues.Event{
+		ID:        eventID,
+		Actor:     sgUser(ctx, actor),
+		CreatedAt: event.CreatedAt,
+		Type:      event.Type,
+		Rename:    event.Rename,
+	})*/
 
 	return issues.Issue{
 		ID:    id,
@@ -412,7 +421,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 			CreatedAt: issue.CreatedAt,
 			Editable:  true, // You can always edit issues you've edited.
 		},
-	}, nil
+	}, events, nil
 }
 
 func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
