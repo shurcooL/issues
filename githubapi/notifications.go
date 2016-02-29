@@ -2,6 +2,7 @@ package githubapi
 
 import (
 	"golang.org/x/net/context"
+	"src.sourcegraph.com/apps/notifications/notifications"
 	"src.sourcegraph.com/apps/tracker/issues"
 )
 
@@ -10,5 +11,5 @@ func (s service) markRead(ctx context.Context, repo issues.RepoSpec, id uint64) 
 	if s.notifications == nil {
 		return nil
 	}
-	return s.notifications.MarkRead(ctx, "Issue", repo, id)
+	return s.notifications.MarkRead(ctx, "Issue", notifications.RepoSpec{URI: repo.URI}, id)
 }

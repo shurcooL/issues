@@ -334,10 +334,10 @@ func (s service) Create(_ context.Context, rs issues.RepoSpec, i issues.Issue) (
 	}, nil
 }
 
-func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, error) {
+func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
 	// TODO: Why Validate here but not Create, etc.? Figure this out. Might only be needed in fs implementation.
 	if err := ir.Validate(); err != nil {
-		return issues.Issue{}, err
+		return issues.Issue{}, nil, err
 	}
 	repo := ghRepoSpec(rs)
 
@@ -351,7 +351,34 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 
 	issue, _, err := s.cl.Issues.Edit(repo.Owner, repo.Repo, int(id), &ghIR)
 	if err != nil {
-		return issues.Issue{}, err
+		return issues.Issue{}, nil, err
+	}
+
+	// GitHub API doesn't return the event that will be generated as a result, so we predict what it'll be.
+	event := issues.Event{
+		// TODO: Figure out if event ID needs to be set, and if so, how to best do that...
+		Actor:     *s.currentUser, // Only logged in users can edit, so we're guaranteed to have a current user.
+		CreatedAt: *issue.CreatedAt,
+	}
+	// TODO: A single edit operation can result in multiple events, we should emit multiple events in such cases. We're currently emitting at most one event.
+	switch {
+	case ir.State != nil: // TODO: && *ir.State != origState:
+		switch *ir.State {
+		case issues.OpenState:
+			event.Type = issues.Reopened
+		case issues.ClosedState:
+			event.Type = issues.Closed
+		}
+	case ir.Title != nil: // TODO: && *ir.Title != origTitle:
+		event.Type = issues.Renamed
+		event.Rename = &issues.Rename{
+			From: "", // TODO: origTitle,
+			To:   *ir.Title,
+		}
+	}
+	var events []issues.Event
+	if event.Type != "" {
+		events = append(events, event)
 	}
 
 	return issues.Issue{
@@ -364,7 +391,7 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 			CreatedAt: *issue.CreatedAt,
 			Editable:  true, // You can always edit issues you've edited.
 		},
-	}, nil
+	}, events, nil
 }
 
 func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
