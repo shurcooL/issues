@@ -167,11 +167,24 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 		}
 
 		author := issues.UserSpec{ID: uint64(comment.AuthorUID)}
+		var reactions []issues.Reaction
+		for _, cr := range comment.Reactions {
+			reaction := issues.Reaction{
+				Reaction: cr.EmojiID,
+			}
+			for _, uid := range cr.AuthorUIDs {
+				// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
+				reactionAuthor := issues.UserSpec{ID: uint64(uid)}
+				reaction.Users = append(reaction.Users, sgUser(ctx, reactionAuthor))
+			}
+			reactions = append(reactions, reaction)
+		}
 		comments = append(comments, issues.Comment{
 			ID:        fi.ID,
 			User:      sgUser(ctx, author),
 			CreatedAt: comment.CreatedAt,
 			Body:      comment.Body,
+			Reactions: reactions,
 			Editable:  nil == canEdit(ctx, currentUser, comment.AuthorUID),
 		})
 	}
@@ -359,9 +372,10 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 	author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
-	actor := currentUser
+	actor := *currentUser
 
 	// Apply edits.
+	origState := issue.State
 	if ir.State != nil {
 		issue.State = *ir.State
 	}
@@ -498,7 +512,12 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	author := issues.UserSpec{ID: uint64(comment.AuthorUID)}
 
 	// Apply edits.
-	comment.Body = *cr.Body
+	if cr.Body != nil {
+		comment.Body = *cr.Body
+	}
+	if cr.Reaction != nil {
+		toggleReaction(&comment, int32(currentUser.ID), *cr.Reaction)
+	}
 
 	// Commit to storage.
 	err = jsonEncodeFile(fs, issueCommentPath(id, cr.ID), comment)
@@ -513,6 +532,49 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		Body:      comment.Body,
 		Editable:  true, // You can always edit comments you've edited.
 	}, nil
+}
+
+// toggleReaction toggles reaction emojiID to comment c for specified user uid.
+func toggleReaction(c *comment, uid int32, emojiID issues.EmojiID) {
+	for i := range c.Reactions {
+		if c.Reactions[i].EmojiID == emojiID {
+			// Toggle this user's reaction.
+			switch reacted := contains(c.Reactions[i].AuthorUIDs, uid); {
+			case reacted == -1:
+				// Add this reaction.
+				c.Reactions[i].AuthorUIDs = append(c.Reactions[i].AuthorUIDs, uid)
+			case reacted >= 0:
+				// Remove this reaction.
+				c.Reactions[i].AuthorUIDs[reacted] = c.Reactions[i].AuthorUIDs[len(c.Reactions[i].AuthorUIDs)-1] // Delete without preserving order.
+				c.Reactions[i].AuthorUIDs = c.Reactions[i].AuthorUIDs[:len(c.Reactions[i].AuthorUIDs)-1]
+
+				// If there are no more authors backing it, this reaction goes away.
+				if len(c.Reactions[i].AuthorUIDs) == 0 {
+					c.Reactions, c.Reactions[len(c.Reactions)-1] = append(c.Reactions[:i], c.Reactions[i+1:]...), reaction{} // Delete preserving order.
+				}
+			}
+			return
+		}
+	}
+
+	// If we get here, this is the first reaction of its kind.
+	// Add it to the end of the list.
+	c.Reactions = append(c.Reactions,
+		reaction{
+			EmojiID:    emojiID,
+			AuthorUIDs: []int32{uid},
+		},
+	)
+}
+
+// contains returns index of e in set, or -1 if it's not there.
+func contains(set []int32, e int32) int {
+	for i, v := range set {
+		if v == e {
+			return i
+		}
+	}
+	return -1
 }
 
 // nextID returns the next id for the given dir. If there are no previous elements, it begins with id 1.

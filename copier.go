@@ -10,7 +10,6 @@ import (
 var _ issues.CopierFrom = service{}
 
 func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.RepoSpec) error {
-	//ctx := context.TODO()
 	if err := s.createNamespace(repo.URI); err != nil {
 		return err
 	}
