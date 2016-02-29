@@ -390,7 +390,6 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		return issues.Issue{}, nil, err
 	}
 
-	// THINK: Is this the best place to do this? Should it be returned from this func? How would GH backend do it?
 	// Create event and commit to storage.
 	createdAt := time.Now().UTC()
 	event := event{
@@ -544,8 +543,8 @@ func toggleReaction(c *comment, uid int32, emojiID issues.EmojiID) {
 				// Add this reaction.
 				c.Reactions[i].AuthorUIDs = append(c.Reactions[i].AuthorUIDs, uid)
 			case reacted >= 0:
-				// Remove this reaction.
-				c.Reactions[i].AuthorUIDs[reacted] = c.Reactions[i].AuthorUIDs[len(c.Reactions[i].AuthorUIDs)-1] // Delete without preserving order.
+				// Remove this reaction. Delete without preserving order.
+				c.Reactions[i].AuthorUIDs[reacted] = c.Reactions[i].AuthorUIDs[len(c.Reactions[i].AuthorUIDs)-1]
 				c.Reactions[i].AuthorUIDs = c.Reactions[i].AuthorUIDs[:len(c.Reactions[i].AuthorUIDs)-1]
 
 				// If there are no more authors backing it, this reaction goes away.
