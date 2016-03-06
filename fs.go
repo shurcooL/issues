@@ -346,6 +346,16 @@ func canEdit(ctx context.Context, currentUser *issues.UserSpec, authorUID int32)
 	}
 }
 
+// canReact returns nil error if currentUser is authorized to react to an entry.
+// It returns os.ErrPermission or an error that happened in other cases.
+func canReact(currentUser *issues.UserSpec) error {
+	if currentUser == nil {
+		// Not logged in, cannot react to anything.
+		return os.ErrPermission
+	}
+	return nil
+}
+
 func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
 	currentUser := (*issues.UserSpec)(nil) // TODO.
 	if currentUser == nil {
@@ -451,7 +461,8 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		return issues.Comment{}, os.ErrPermission
 	}
 
-	if _, err := cr.Validate(); err != nil {
+	requiresEdit, err := cr.Validate()
+	if err != nil {
 		return issues.Comment{}, err
 	}
 
@@ -461,6 +472,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 	fs := s.namespace(repo.URI)
 
+	// TODO: Merge these 2 cases (first comment aka issue vs reply comments) into one.
 	if cr.ID == 0 {
 		// Get from storage.
 		var issue issue
@@ -470,15 +482,27 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		}
 
 		// Authorization check.
-		if err := canEdit(ctx, currentUser, issue.AuthorUID); err != nil {
-			return issues.Comment{}, err
+		switch requiresEdit {
+		case true:
+			if err := canEdit(ctx, currentUser, issue.AuthorUID); err != nil {
+				return issues.Comment{}, err
+			}
+		case false:
+			if err := canReact(currentUser); err != nil {
+				return issues.Comment{}, err
+			}
 		}
 
 		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 		author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
 
 		// Apply edits.
-		issue.Body = *cr.Body
+		if cr.Body != nil {
+			issue.Body = *cr.Body
+		}
+		if cr.Reaction != nil {
+			toggleReaction(&issue.comment, int32(currentUser.ID), *cr.Reaction)
+		}
 
 		// Commit to storage.
 		err = jsonEncodeFile(fs, issueCommentPath(id, 0), issue)
@@ -497,14 +521,21 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 	// Get from storage.
 	var comment comment
-	err := jsonDecodeFile(fs, issueCommentPath(id, cr.ID), &comment)
+	err = jsonDecodeFile(fs, issueCommentPath(id, cr.ID), &comment)
 	if err != nil {
 		return issues.Comment{}, err
 	}
 
 	// Authorization check.
-	if err := canEdit(ctx, currentUser, comment.AuthorUID); err != nil {
-		return issues.Comment{}, err
+	switch requiresEdit {
+	case true:
+		if err := canEdit(ctx, currentUser, comment.AuthorUID); err != nil {
+			return issues.Comment{}, err
+		}
+	case false:
+		if err := canReact(currentUser); err != nil {
+			return issues.Comment{}, err
+		}
 	}
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
@@ -538,13 +569,13 @@ func toggleReaction(c *comment, uid int32, emojiID issues.EmojiID) {
 	for i := range c.Reactions {
 		if c.Reactions[i].EmojiID == emojiID {
 			// Toggle this user's reaction.
-			switch reacted := contains(c.Reactions[i].AuthorUIDs, uid); {
-			case reacted == -1:
+			switch reactedUID := contains(c.Reactions[i].AuthorUIDs, uid); {
+			case reactedUID == -1:
 				// Add this reaction.
 				c.Reactions[i].AuthorUIDs = append(c.Reactions[i].AuthorUIDs, uid)
-			case reacted >= 0:
+			default:
 				// Remove this reaction. Delete without preserving order.
-				c.Reactions[i].AuthorUIDs[reacted] = c.Reactions[i].AuthorUIDs[len(c.Reactions[i].AuthorUIDs)-1]
+				c.Reactions[i].AuthorUIDs[reactedUID] = c.Reactions[i].AuthorUIDs[len(c.Reactions[i].AuthorUIDs)-1]
 				c.Reactions[i].AuthorUIDs = c.Reactions[i].AuthorUIDs[:len(c.Reactions[i].AuthorUIDs)-1]
 
 				// If there are no more authors backing it, this reaction goes away.
