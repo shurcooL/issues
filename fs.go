@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shurcooL/users"
 	"golang.org/x/net/context"
 	"golang.org/x/net/webdav"
 	"src.sourcegraph.com/apps/tracker/issues"
@@ -26,15 +27,22 @@ type service struct {
 
 // TODO.
 // NewService creates a filesystem-backed issues.Service rooted at rootDir.
-func NewService(rootDir string) issues.Service {
+func NewService(rootDir string, users users.Service, usersDomain string) issues.Service {
 	return service{
-		root: rootDir,
+		root:        rootDir,
+		users:       users,
+		usersDomain: usersDomain,
 	}
 }
 
 type service struct {
 	// root directory for issue storage for all repos.
 	root string
+
+	users users.Service
+
+	// HACK: Temporary parameter acts as a hint for which domain the "old" users come from.
+	usersDomain string
 }
 
 // TODO.
@@ -77,13 +85,13 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 		if err != nil {
 			return is, err
 		}
-		author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+		author := issues.UserSpec{ID: uint64(issue.AuthorUID), Domain: s.usersDomain}
 		is = append(is, issues.Issue{
 			ID:    dir.ID,
 			State: issue.State,
 			Title: issue.Title,
 			Comment: issues.Comment{
-				User:      sgUser(ctx, author),
+				User:      s.issuesUser(ctx, author),
 				CreatedAt: issue.CreatedAt,
 			},
 			Replies: len(comments) - 1,
@@ -134,14 +142,14 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		return issues.Issue{}, err
 	}
 
-	author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+	author := issues.UserSpec{ID: uint64(issue.AuthorUID), Domain: s.usersDomain}
 
 	return issues.Issue{
 		ID:    id,
 		State: issue.State,
 		Title: issue.Title,
 		Comment: issues.Comment{
-			User:      sgUser(ctx, author),
+			User:      s.issuesUser(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Editable:  nil == canEdit(ctx, currentUser, issue.AuthorUID),
 		},
@@ -166,7 +174,7 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			return comments, err
 		}
 
-		author := issues.UserSpec{ID: uint64(comment.AuthorUID)}
+		author := issues.UserSpec{ID: uint64(comment.AuthorUID), Domain: s.usersDomain}
 		var reactions []issues.Reaction
 		for _, cr := range comment.Reactions {
 			reaction := issues.Reaction{
@@ -174,14 +182,14 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			}
 			for _, uid := range cr.AuthorUIDs {
 				// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
-				reactionAuthor := issues.UserSpec{ID: uint64(uid)}
-				reaction.Users = append(reaction.Users, sgUser(ctx, reactionAuthor))
+				reactionAuthor := issues.UserSpec{ID: uint64(uid), Domain: s.usersDomain}
+				reaction.Users = append(reaction.Users, s.issuesUser(ctx, reactionAuthor))
 			}
 			reactions = append(reactions, reaction)
 		}
 		comments = append(comments, issues.Comment{
 			ID:        fi.ID,
-			User:      sgUser(ctx, author),
+			User:      s.issuesUser(ctx, author),
 			CreatedAt: comment.CreatedAt,
 			Body:      comment.Body,
 			Reactions: reactions,
@@ -208,10 +216,10 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 			return events, err
 		}
 
-		actor := issues.UserSpec{ID: uint64(event.ActorUID)}
+		actor := issues.UserSpec{ID: uint64(event.ActorUID), Domain: s.usersDomain}
 		events = append(events, issues.Event{
 			ID:        fi.ID,
-			Actor:     sgUser(ctx, actor),
+			Actor:     s.issuesUser(ctx, actor),
 			CreatedAt: event.CreatedAt,
 			Type:      event.Type,
 			Rename:    event.Rename,
@@ -240,7 +248,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 		Body:      c.Body,
 	}
 
-	author := issues.UserSpec{ID: uint64(comment.AuthorUID)}
+	author := issues.UserSpec{ID: uint64(comment.AuthorUID), Domain: s.usersDomain}
 
 	// Commit to storage.
 	commentID, err := nextID(fs, issueDir(id))
@@ -254,7 +262,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 	return issues.Comment{
 		ID:        commentID,
-		User:      sgUser(ctx, author),
+		User:      s.issuesUser(ctx, author),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
 		Editable:  true, // You can always edit comments you've created.
@@ -291,7 +299,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		},
 	}
 
-	author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+	author := issues.UserSpec{ID: uint64(issue.AuthorUID), Domain: s.usersDomain}
 
 	// Commit to storage.
 	issueID, err := nextID(fs, issuesDir)
@@ -317,7 +325,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		Title: issue.Title,
 		Comment: issues.Comment{
 			ID:        0,
-			User:      sgUser(ctx, author),
+			User:      s.issuesUser(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Body:      issue.Body,
 			Editable:  true, // You can always edit issues you've created.
@@ -381,7 +389,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-	author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+	author := issues.UserSpec{ID: uint64(issue.AuthorUID), Domain: s.usersDomain}
 	actor := *currentUser
 
 	// Apply edits.
@@ -435,7 +443,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 		events = append(events, issues.Event{
 			ID:        eventID,
-			Actor:     sgUser(ctx, actor),
+			Actor:     s.issuesUser(ctx, actor),
 			CreatedAt: event.CreatedAt,
 			Type:      event.Type,
 			Rename:    event.Rename,
@@ -448,7 +456,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		Title: issue.Title,
 		Comment: issues.Comment{
 			ID:        0,
-			User:      sgUser(ctx, author),
+			User:      s.issuesUser(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Editable:  true, // You can always edit issues you've edited.
 		},
@@ -494,7 +502,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		}
 
 		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-		author := issues.UserSpec{ID: uint64(issue.AuthorUID)}
+		author := issues.UserSpec{ID: uint64(issue.AuthorUID), Domain: s.usersDomain}
 
 		// Apply edits.
 		if cr.Body != nil {
@@ -512,7 +520,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 		return issues.Comment{
 			ID:        0,
-			User:      sgUser(ctx, author),
+			User:      s.issuesUser(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Body:      issue.Body,
 			Editable:  true, // You can always edit comments you've edited.
@@ -539,7 +547,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	}
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-	author := issues.UserSpec{ID: uint64(comment.AuthorUID)}
+	author := issues.UserSpec{ID: uint64(comment.AuthorUID), Domain: s.usersDomain}
 
 	// Apply edits.
 	if cr.Body != nil {
@@ -557,7 +565,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 	return issues.Comment{
 		ID:        cr.ID,
-		User:      sgUser(ctx, author),
+		User:      s.issuesUser(ctx, author),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
 		Editable:  true, // You can always edit comments you've edited.
@@ -624,10 +632,11 @@ func (s service) Search(_ context.Context, opt issues.SearchOptions) (issues.Sea
 }
 
 // TODO.
-func (service) CurrentUser(ctx context.Context) (*issues.User, error) {
-	user := issues.UserSpec{ID: uint64(0)}
-	u := sgUser(ctx, user)
-	return &u, nil
+func (s service) CurrentUser(ctx context.Context) (*issues.User, error) {
+	/*user := issues.UserSpec{ID: uint64(0), Domain: s.usersDomain}
+	u := s.issuesUser(ctx, user)
+	return &u, nil*/
+	return nil, nil
 }
 
 func formatUint64(n uint64) string { return strconv.FormatUint(n, 10) }
