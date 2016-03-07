@@ -7,12 +7,23 @@ import (
 	"src.sourcegraph.com/apps/tracker/issues"
 )
 
-/* TODO.
 // userSpec is an on-disk representation of a specification for a user.
 type userSpec struct {
 	ID     uint64
 	Domain string `json:",omitempty"`
-}*/
+}
+
+func fromUserSpec(us issues.UserSpec) userSpec {
+	return userSpec{ID: us.ID, Domain: us.Domain}
+}
+
+func (us userSpec) UserSpec() issues.UserSpec {
+	return issues.UserSpec{ID: us.ID, Domain: us.Domain}
+}
+
+func (us userSpec) Equal(other issues.UserSpec) bool {
+	return us.Domain == other.Domain && us.ID == other.ID
+}
 
 // issue is an on-disk representation of an issue.
 type issue struct {
@@ -23,7 +34,7 @@ type issue struct {
 
 // comment is an on-disk representation of a comment.
 type comment struct {
-	AuthorUID int32
+	Author    userSpec
 	CreatedAt time.Time
 	Body      string
 	Reactions []reaction `json:",omitempty"`
@@ -31,13 +42,13 @@ type comment struct {
 
 // reaction is an on-disk representation of a reaction.
 type reaction struct {
-	EmojiID    issues.EmojiID
-	AuthorUIDs []int32 // Order does not matter; this would be better represented as a set like map[int32]struct{}, but we're using JSON and it doesn't support that.
+	EmojiID issues.EmojiID
+	Authors []userSpec // Order does not matter; this would be better represented as a set like map[userSpec]struct{}, but we're using JSON and it doesn't support that.
 }
 
 // event is an on-disk representation of an event.
 type event struct {
-	ActorUID  int32
+	Actor     userSpec
 	CreatedAt time.Time
 	Type      issues.EventType
 	Rename    *issues.Rename `json:",omitempty"`

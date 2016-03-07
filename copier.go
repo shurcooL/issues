@@ -30,7 +30,7 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 			State: i.State,
 			Title: i.Title,
 			comment: comment{
-				AuthorUID: int32(i.User.ID),
+				Author:    fromUserSpec(i.User.UserSpec),
 				CreatedAt: i.CreatedAt,
 				// TODO: This doesn't work, Get doesn't return body, reactions, etc.; using ListComments for now for that... Improve this.
 				//       Perhaps this is motivation to separate Comment out of Issue, so get can return only Issue and it's clear that Comment details are elsewhere.
@@ -60,7 +60,7 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 		for _, c := range comments {
 			// Copy comment.
 			comment := comment{
-				AuthorUID: int32(c.User.ID),
+				Author:    fromUserSpec(c.User.UserSpec),
 				CreatedAt: c.CreatedAt,
 				Body:      c.Body,
 			}
@@ -69,7 +69,7 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 					EmojiID: r.Reaction,
 				}
 				for _, u := range r.Users {
-					reaction.AuthorUIDs = append(reaction.AuthorUIDs, int32(u.ID))
+					reaction.Authors = append(reaction.Authors, fromUserSpec(u.UserSpec))
 				}
 				comment.Reactions = append(comment.Reactions, reaction)
 			}
@@ -100,7 +100,7 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 		for _, e := range events {
 			// Copy event.
 			event := event{
-				ActorUID:  int32(e.Actor.ID),
+				Actor:     fromUserSpec(e.Actor.UserSpec),
 				CreatedAt: e.CreatedAt,
 				Type:      e.Type,
 				Rename:    e.Rename,

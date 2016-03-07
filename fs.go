@@ -27,12 +27,12 @@ type service struct {
 
 // TODO.
 // NewService creates a filesystem-backed issues.Service rooted at rootDir.
-func NewService(rootDir string, users users.Service, usersDomain string) issues.Service {
+func NewService(rootDir string, users users.Service) (issues.Service, error) {
 	return service{
-		root:        rootDir,
-		users:       users,
-		usersDomain: usersDomain,
-	}
+		root:  rootDir,
+		users: users,
+	}, nil
+	// TODO: Return error if rootDir not found, etc.
 }
 
 type service struct {
@@ -40,9 +40,6 @@ type service struct {
 	root string
 
 	users users.Service
-
-	// HACK: Temporary parameter acts as a hint for which domain the "old" users come from.
-	usersDomain string
 }
 
 // TODO.
@@ -85,7 +82,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 		if err != nil {
 			return is, err
 		}
-		author := issues.UserSpec{ID: uint64(issue.AuthorUID), Domain: s.usersDomain}
+		author := issue.Author.UserSpec()
 		is = append(is, issues.Issue{
 			ID:    dir.ID,
 			State: issue.State,
@@ -142,7 +139,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		return issues.Issue{}, err
 	}
 
-	author := issues.UserSpec{ID: uint64(issue.AuthorUID), Domain: s.usersDomain}
+	author := issue.Author.UserSpec()
 
 	return issues.Issue{
 		ID:    id,
@@ -151,7 +148,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		Comment: issues.Comment{
 			User:      s.issuesUser(ctx, author),
 			CreatedAt: issue.CreatedAt,
-			Editable:  nil == canEdit(ctx, currentUser, issue.AuthorUID),
+			Editable:  nil == canEdit(ctx, currentUser, issue.Author),
 		},
 	}, nil
 }
@@ -174,15 +171,15 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			return comments, err
 		}
 
-		author := issues.UserSpec{ID: uint64(comment.AuthorUID), Domain: s.usersDomain}
+		author := comment.Author.UserSpec()
 		var reactions []issues.Reaction
 		for _, cr := range comment.Reactions {
 			reaction := issues.Reaction{
 				Reaction: cr.EmojiID,
 			}
-			for _, uid := range cr.AuthorUIDs {
+			for _, u := range cr.Authors {
 				// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
-				reactionAuthor := issues.UserSpec{ID: uint64(uid), Domain: s.usersDomain}
+				reactionAuthor := u.UserSpec()
 				reaction.Users = append(reaction.Users, s.issuesUser(ctx, reactionAuthor))
 			}
 			reactions = append(reactions, reaction)
@@ -193,7 +190,7 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			CreatedAt: comment.CreatedAt,
 			Body:      comment.Body,
 			Reactions: reactions,
-			Editable:  nil == canEdit(ctx, currentUser, comment.AuthorUID),
+			Editable:  nil == canEdit(ctx, currentUser, comment.Author),
 		})
 	}
 
@@ -216,7 +213,7 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 			return events, err
 		}
 
-		actor := issues.UserSpec{ID: uint64(event.ActorUID), Domain: s.usersDomain}
+		actor := event.Actor.UserSpec()
 		events = append(events, issues.Event{
 			ID:        fi.ID,
 			Actor:     s.issuesUser(ctx, actor),
@@ -243,12 +240,12 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 	fs := s.namespace(repo.URI)
 
 	comment := comment{
-		AuthorUID: int32(currentUser.ID),
+		Author:    fromUserSpec(*currentUser),
 		CreatedAt: time.Now().UTC(),
 		Body:      c.Body,
 	}
 
-	author := issues.UserSpec{ID: uint64(comment.AuthorUID), Domain: s.usersDomain}
+	author := comment.Author.UserSpec()
 
 	// Commit to storage.
 	commentID, err := nextID(fs, issueDir(id))
@@ -293,13 +290,13 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		State: issues.OpenState,
 		Title: i.Title,
 		comment: comment{
-			AuthorUID: int32(currentUser.ID),
+			Author:    fromUserSpec(*currentUser),
 			CreatedAt: time.Now().UTC(),
 			Body:      i.Body,
 		},
 	}
 
-	author := issues.UserSpec{ID: uint64(issue.AuthorUID), Domain: s.usersDomain}
+	author := issue.Author.UserSpec()
 
 	// Commit to storage.
 	issueID, err := nextID(fs, issuesDir)
@@ -333,14 +330,14 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	}, nil
 }
 
-// canEdit returns nil error if currentUser is authorized to edit an entry created by authorUID.
+// canEdit returns nil error if currentUser is authorized to edit an entry created by author.
 // It returns os.ErrPermission or an error that happened in other cases.
-func canEdit(ctx context.Context, currentUser *issues.UserSpec, authorUID int32) error {
+func canEdit(ctx context.Context, currentUser *issues.UserSpec, author userSpec) error {
 	if currentUser == nil {
 		// Not logged in, cannot edit anything.
 		return os.ErrPermission
 	}
-	if int32(currentUser.ID) == authorUID {
+	if author.Equal(*currentUser) {
 		// If you're the author, you can always edit it.
 		return nil
 	}
@@ -384,12 +381,12 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 
 	// Authorization check.
-	if err := canEdit(ctx, currentUser, issue.AuthorUID); err != nil {
+	if err := canEdit(ctx, currentUser, issue.Author); err != nil {
 		return issues.Issue{}, nil, err
 	}
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-	author := issues.UserSpec{ID: uint64(issue.AuthorUID), Domain: s.usersDomain}
+	author := issue.Author.UserSpec()
 	actor := *currentUser
 
 	// Apply edits.
@@ -411,7 +408,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	// Create event and commit to storage.
 	createdAt := time.Now().UTC()
 	event := event{
-		ActorUID:  int32(currentUser.ID),
+		Actor:     fromUserSpec(actor),
 		CreatedAt: createdAt,
 	}
 	// TODO: A single edit operation can result in multiple events, we should emit multiple events in such cases. We're currently emitting at most one event.
@@ -492,7 +489,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		// Authorization check.
 		switch requiresEdit {
 		case true:
-			if err := canEdit(ctx, currentUser, issue.AuthorUID); err != nil {
+			if err := canEdit(ctx, currentUser, issue.Author); err != nil {
 				return issues.Comment{}, err
 			}
 		case false:
@@ -502,14 +499,14 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		}
 
 		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-		author := issues.UserSpec{ID: uint64(issue.AuthorUID), Domain: s.usersDomain}
+		author := issue.Author.UserSpec()
 
 		// Apply edits.
 		if cr.Body != nil {
 			issue.Body = *cr.Body
 		}
 		if cr.Reaction != nil {
-			toggleReaction(&issue.comment, int32(currentUser.ID), *cr.Reaction)
+			toggleReaction(&issue.comment, *currentUser, *cr.Reaction)
 		}
 
 		// Commit to storage.
@@ -537,7 +534,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	// Authorization check.
 	switch requiresEdit {
 	case true:
-		if err := canEdit(ctx, currentUser, comment.AuthorUID); err != nil {
+		if err := canEdit(ctx, currentUser, comment.Author); err != nil {
 			return issues.Comment{}, err
 		}
 	case false:
@@ -547,14 +544,14 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	}
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
-	author := issues.UserSpec{ID: uint64(comment.AuthorUID), Domain: s.usersDomain}
+	author := comment.Author.UserSpec()
 
 	// Apply edits.
 	if cr.Body != nil {
 		comment.Body = *cr.Body
 	}
 	if cr.Reaction != nil {
-		toggleReaction(&comment, int32(currentUser.ID), *cr.Reaction)
+		toggleReaction(&comment, *currentUser, *cr.Reaction)
 	}
 
 	// Commit to storage.
@@ -573,8 +570,9 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 }
 
 // toggleReaction toggles reaction emojiID to comment c for specified user uid.
-func toggleReaction(c *comment, uid int32, emojiID issues.EmojiID) {
-	for i := range c.Reactions {
+func toggleReaction(c *comment, uid issues.UserSpec, emojiID issues.EmojiID) {
+	panic("not yet impl")
+	/*for i := range c.Reactions {
 		if c.Reactions[i].EmojiID == emojiID {
 			// Toggle this user's reaction.
 			switch reactedUID := contains(c.Reactions[i].AuthorUIDs, uid); {
@@ -602,18 +600,18 @@ func toggleReaction(c *comment, uid int32, emojiID issues.EmojiID) {
 			EmojiID:    emojiID,
 			AuthorUIDs: []int32{uid},
 		},
-	)
+	)*/
 }
 
 // contains returns index of e in set, or -1 if it's not there.
-func contains(set []int32, e int32) int {
+/*func contains(set []userSpec, e userSpec) int {
 	for i, v := range set {
-		if v == e {
+		if v.equal(e) {
 			return i
 		}
 	}
 	return -1
-}
+}*/
 
 // nextID returns the next id for the given dir. If there are no previous elements, it begins with id 1.
 func nextID(fs webdav.FileSystem, dir string) (uint64, error) {
