@@ -129,12 +129,15 @@ func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.Iss
 }
 
 func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issues.Issue, error) {
-	currentUser := (*issues.UserSpec)(nil) // TODO.
+	currentUser, err := s.getAuthenticated(ctx)
+	if err != nil {
+		return issues.Issue{}, err
+	}
 
 	fs := s.namespace(repo.URI)
 
 	var issue issue
-	err := jsonDecodeFile(fs, issueCommentPath(id, 0), &issue)
+	err = jsonDecodeFile(fs, issueCommentPath(id, 0), &issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -154,7 +157,10 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 }
 
 func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
-	currentUser := (*issues.UserSpec)(nil) // TODO.
+	currentUser, err := s.getAuthenticated(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	fs := s.namespace(repo.URI)
 
@@ -228,7 +234,10 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 
 func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
 	// CreateComment operation requires an authenticated user with read access.
-	currentUser := (*issues.UserSpec)(nil) // TODO.
+	currentUser, err := s.getAuthenticated(ctx)
+	if err != nil {
+		return issues.Comment{}, err
+	}
 	if currentUser == nil {
 		return issues.Comment{}, os.ErrPermission
 	}
@@ -268,7 +277,10 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
 	// Create operation requires an authenticated user with read access.
-	currentUser := (*issues.UserSpec)(nil) // TODO.
+	currentUser, err := s.getAuthenticated(ctx)
+	if err != nil {
+		return issues.Issue{}, err
+	}
 	if currentUser == nil {
 		return issues.Issue{}, os.ErrPermission
 	}
@@ -362,7 +374,10 @@ func canReact(currentUser *issues.UserSpec) error {
 }
 
 func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
-	currentUser := (*issues.UserSpec)(nil) // TODO.
+	currentUser, err := s.getAuthenticated(ctx)
+	if err != nil {
+		return issues.Issue{}, nil, err
+	}
 	if currentUser == nil {
 		return issues.Issue{}, nil, os.ErrPermission
 	}
@@ -375,7 +390,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 	// Get from storage.
 	var issue issue
-	err := jsonDecodeFile(fs, issueCommentPath(id, 0), &issue)
+	err = jsonDecodeFile(fs, issueCommentPath(id, 0), &issue)
 	if err != nil {
 		return issues.Issue{}, nil, err
 	}
@@ -461,7 +476,10 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 }
 
 func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
-	currentUser := (*issues.UserSpec)(nil) // TODO.
+	currentUser, err := s.getAuthenticated(ctx)
+	if err != nil {
+		return issues.Comment{}, err
+	}
 	if currentUser == nil {
 		return issues.Comment{}, os.ErrPermission
 	}
@@ -629,12 +647,28 @@ func (s service) Search(_ context.Context, opt issues.SearchOptions) (issues.Sea
 	return issues.SearchResponse{}, errors.New("Search endpoint not implemented in fs service implementation")
 }
 
-// TODO.
+func (s service) getAuthenticated(ctx context.Context) (*issues.UserSpec, error) {
+	currentUser, err := s.users.GetAuthenticated(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if currentUser == nil {
+		return nil, nil
+	}
+	return &issues.UserSpec{ID: currentUser.ID, Domain: currentUser.Domain}, nil
+}
+
+// TODO: Rename or defer to users.GetAuthenticated even more directly?
 func (s service) CurrentUser(ctx context.Context) (*issues.User, error) {
-	/*user := issues.UserSpec{ID: uint64(0), Domain: s.usersDomain}
-	u := s.issuesUser(ctx, user)
-	return &u, nil*/
-	return nil, nil
+	currentUser, err := s.getAuthenticated(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if currentUser == nil {
+		return nil, nil
+	}
+	user := s.issuesUser(ctx, *currentUser)
+	return &user, nil
 }
 
 func formatUint64(n uint64) string { return strconv.FormatUint(n, 10) }
