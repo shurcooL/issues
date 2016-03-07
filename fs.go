@@ -44,12 +44,12 @@ type service struct {
 
 // TODO.
 func (s service) namespace(repoURI string) webdav.FileSystem {
-	return webdav.Dir(filepath.Join(s.root, "repo", filepath.FromSlash(repoURI), "tracker"))
+	return webdav.Dir(filepath.Join(s.root, filepath.FromSlash(repoURI)))
 }
 func (s service) createNamespace(repoURI string) error {
 	// Only needed for first issue in the repo.
 	// TODO: Can this be better?
-	return os.MkdirAll(filepath.Join(s.root, "repo", filepath.FromSlash(repoURI), "tracker", issuesDir), 0755)
+	return os.MkdirAll(filepath.Join(s.root, filepath.FromSlash(repoURI), issuesDir), 0755)
 }
 
 func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
