@@ -587,23 +587,22 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	}, nil
 }
 
-// toggleReaction toggles reaction emojiID to comment c for specified user uid.
-func toggleReaction(c *comment, uid issues.UserSpec, emojiID issues.EmojiID) {
-	panic("not yet impl")
-	/*for i := range c.Reactions {
+// toggleReaction toggles reaction emojiID to comment c for specified user u.
+func toggleReaction(c *comment, u issues.UserSpec, emojiID issues.EmojiID) {
+	for i := range c.Reactions {
 		if c.Reactions[i].EmojiID == emojiID {
 			// Toggle this user's reaction.
-			switch reactedUID := contains(c.Reactions[i].AuthorUIDs, uid); {
-			case reactedUID == -1:
+			switch reacted := contains(c.Reactions[i].Authors, u); {
+			case reacted == -1:
 				// Add this reaction.
-				c.Reactions[i].AuthorUIDs = append(c.Reactions[i].AuthorUIDs, uid)
+				c.Reactions[i].Authors = append(c.Reactions[i].Authors, fromUserSpec(u))
 			default:
 				// Remove this reaction. Delete without preserving order.
-				c.Reactions[i].AuthorUIDs[reactedUID] = c.Reactions[i].AuthorUIDs[len(c.Reactions[i].AuthorUIDs)-1]
-				c.Reactions[i].AuthorUIDs = c.Reactions[i].AuthorUIDs[:len(c.Reactions[i].AuthorUIDs)-1]
+				c.Reactions[i].Authors[reacted] = c.Reactions[i].Authors[len(c.Reactions[i].Authors)-1]
+				c.Reactions[i].Authors = c.Reactions[i].Authors[:len(c.Reactions[i].Authors)-1]
 
 				// If there are no more authors backing it, this reaction goes away.
-				if len(c.Reactions[i].AuthorUIDs) == 0 {
+				if len(c.Reactions[i].Authors) == 0 {
 					c.Reactions, c.Reactions[len(c.Reactions)-1] = append(c.Reactions[:i], c.Reactions[i+1:]...), reaction{} // Delete preserving order.
 				}
 			}
@@ -615,21 +614,21 @@ func toggleReaction(c *comment, uid issues.UserSpec, emojiID issues.EmojiID) {
 	// Add it to the end of the list.
 	c.Reactions = append(c.Reactions,
 		reaction{
-			EmojiID:    emojiID,
-			AuthorUIDs: []int32{uid},
+			EmojiID: emojiID,
+			Authors: []userSpec{fromUserSpec(u)},
 		},
-	)*/
+	)
 }
 
 // contains returns index of e in set, or -1 if it's not there.
-/*func contains(set []userSpec, e userSpec) int {
+func contains(set []userSpec, e issues.UserSpec) int {
 	for i, v := range set {
-		if v.equal(e) {
+		if v.Equal(e) {
 			return i
 		}
 	}
 	return -1
-}*/
+}
 
 // nextID returns the next id for the given dir. If there are no previous elements, it begins with id 1.
 func nextID(fs webdav.FileSystem, dir string) (uint64, error) {
