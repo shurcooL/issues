@@ -524,7 +524,10 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 			issue.Body = *cr.Body
 		}
 		if cr.Reaction != nil {
-			toggleReaction(&issue.comment, *currentUser, *cr.Reaction)
+			err := toggleReaction(&issue.comment, *currentUser, *cr.Reaction)
+			if err != nil {
+				return issues.Comment{}, err
+			}
 		}
 
 		// Commit to storage.
@@ -569,7 +572,10 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		comment.Body = *cr.Body
 	}
 	if cr.Reaction != nil {
-		toggleReaction(&comment, *currentUser, *cr.Reaction)
+		err := toggleReaction(&comment, *currentUser, *cr.Reaction)
+		if err != nil {
+			return issues.Comment{}, err
+		}
 	}
 
 	// Commit to storage.
@@ -588,12 +594,27 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 }
 
 // toggleReaction toggles reaction emojiID to comment c for specified user u.
-func toggleReaction(c *comment, u issues.UserSpec, emojiID issues.EmojiID) {
+func toggleReaction(c *comment, u issues.UserSpec, emojiID issues.EmojiID) error {
+	reactionsFromUser := 0
+reactionsLoop:
+	for _, r := range c.Reactions {
+		for _, author := range r.Authors {
+			if author.Equal(u) {
+				reactionsFromUser++
+				continue reactionsLoop
+			}
+		}
+	}
+
 	for i := range c.Reactions {
 		if c.Reactions[i].EmojiID == emojiID {
 			// Toggle this user's reaction.
 			switch reacted := contains(c.Reactions[i].Authors, u); {
 			case reacted == -1:
+				if reactionsFromUser >= 20 {
+					return errors.New("too many reactions from same user")
+				}
+
 				// Add this reaction.
 				c.Reactions[i].Authors = append(c.Reactions[i].Authors, fromUserSpec(u))
 			default:
@@ -606,7 +627,7 @@ func toggleReaction(c *comment, u issues.UserSpec, emojiID issues.EmojiID) {
 					c.Reactions, c.Reactions[len(c.Reactions)-1] = append(c.Reactions[:i], c.Reactions[i+1:]...), reaction{} // Delete preserving order.
 				}
 			}
-			return
+			return nil
 		}
 	}
 
@@ -618,6 +639,7 @@ func toggleReaction(c *comment, u issues.UserSpec, emojiID issues.EmojiID) {
 			Authors: []userSpec{fromUserSpec(u)},
 		},
 	)
+	return nil
 }
 
 // contains returns index of e in set, or -1 if it's not there.
