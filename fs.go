@@ -184,8 +184,8 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 				Reaction: cr.EmojiID,
 			}
 			for _, u := range cr.Authors {
-				// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
 				reactionAuthor := u.UserSpec()
+				// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
 				reaction.Users = append(reaction.Users, s.issuesUser(ctx, reactionAuthor))
 			}
 			reactions = append(reactions, reaction)
@@ -489,10 +489,6 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		return issues.Comment{}, err
 	}
 
-	if cr.Body == nil {
-		return issues.Comment{}, errors.New("unsupported EditComment request for fs service implementation")
-	}
-
 	fs := s.namespace(repo.URI)
 
 	// TODO: Merge these 2 cases (first comment aka issue vs reply comments) into one.
@@ -536,11 +532,24 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 			return issues.Comment{}, err
 		}
 
+		var reactions []issues.Reaction
+		for _, cr := range issue.Reactions {
+			reaction := issues.Reaction{
+				Reaction: cr.EmojiID,
+			}
+			for _, u := range cr.Authors {
+				reactionAuthor := u.UserSpec()
+				// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
+				reaction.Users = append(reaction.Users, s.issuesUser(ctx, reactionAuthor))
+			}
+			reactions = append(reactions, reaction)
+		}
 		return issues.Comment{
 			ID:        0,
 			User:      s.issuesUser(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Body:      issue.Body,
+			Reactions: reactions,
 			Editable:  true, // You can always edit comments you've edited.
 		}, nil
 	}
@@ -584,11 +593,24 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		return issues.Comment{}, err
 	}
 
+	var reactions []issues.Reaction
+	for _, cr := range comment.Reactions {
+		reaction := issues.Reaction{
+			Reaction: cr.EmojiID,
+		}
+		for _, u := range cr.Authors {
+			reactionAuthor := u.UserSpec()
+			// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
+			reaction.Users = append(reaction.Users, s.issuesUser(ctx, reactionAuthor))
+		}
+		reactions = append(reactions, reaction)
+	}
 	return issues.Comment{
 		ID:        cr.ID,
 		User:      s.issuesUser(ctx, author),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
+		Reactions: reactions,
 		Editable:  true, // You can always edit comments you've edited.
 	}, nil
 }
