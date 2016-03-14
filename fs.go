@@ -633,11 +633,11 @@ reactionsLoop:
 			// Toggle this user's reaction.
 			switch reacted := contains(c.Reactions[i].Authors, u); {
 			case reacted == -1:
+				// Add this reaction.
 				if reactionsFromUser >= 20 {
+					// TODO: Propagate this error as 400 Bad Request to frontend.
 					return errors.New("too many reactions from same user")
 				}
-
-				// Add this reaction.
 				c.Reactions[i].Authors = append(c.Reactions[i].Authors, fromUserSpec(u))
 			default:
 				// Remove this reaction. Delete without preserving order.
@@ -655,6 +655,10 @@ reactionsLoop:
 
 	// If we get here, this is the first reaction of its kind.
 	// Add it to the end of the list.
+	if reactionsFromUser >= 20 {
+		// TODO: Propagate this error as 400 Bad Request to frontend.
+		return errors.New("too many reactions from same user")
+	}
 	c.Reactions = append(c.Reactions,
 		reaction{
 			EmojiID: emojiID,
