@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/google/go-github/github"
+	"github.com/shurcooL/issues"
+	"github.com/shurcooL/notifications"
 	"golang.org/x/net/context"
-	"src.sourcegraph.com/apps/notifications/notifications"
-	"src.sourcegraph.com/apps/tracker/issues"
 )
 
 // NewService creates a GitHub-backed issues.Service using given GitHub client,
