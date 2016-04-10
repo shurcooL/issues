@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"src.sourcegraph.com/apps/tracker/issues"
+	"github.com/shurcooL/issues"
 )
 
 func TestToggleReaction(t *testing.T) {

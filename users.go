@@ -3,9 +3,9 @@ package fs
 import (
 	"fmt"
 
+	"github.com/shurcooL/issues"
 	"github.com/shurcooL/users"
 	"golang.org/x/net/context"
-	"src.sourcegraph.com/apps/tracker/issues"
 )
 
 func (s service) issuesUser(ctx context.Context, user issues.UserSpec) issues.User {

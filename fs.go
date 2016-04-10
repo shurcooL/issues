@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shurcooL/issues"
 	"github.com/shurcooL/users"
 	"golang.org/x/net/context"
 	"golang.org/x/net/webdav"
-	"src.sourcegraph.com/apps/tracker/issues"
 )
 
 // NewService creates a virtual filesystem-backed issues.Service using root for storage.

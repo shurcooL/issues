@@ -3,8 +3,8 @@ package fs
 import (
 	"fmt"
 
+	"github.com/shurcooL/issues"
 	"golang.org/x/net/context"
-	"src.sourcegraph.com/apps/tracker/issues"
 )
 
 var _ issues.CopierFrom = service{}

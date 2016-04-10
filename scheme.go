@@ -4,7 +4,7 @@ import (
 	"path"
 	"time"
 
-	"src.sourcegraph.com/apps/tracker/issues"
+	"github.com/shurcooL/issues"
 )
 
 // userSpec is an on-disk representation of a specification for a user.
