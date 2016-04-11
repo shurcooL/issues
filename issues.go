@@ -1,4 +1,4 @@
-// Package issues provides an issue tracker service definition.
+// Package issues provides an issues service definition.
 package issues
 
 import (
