@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/shurcooL/issues"
+	"github.com/shurcooL/users"
 )
 
 // userSpec is an on-disk representation of a specification for a user.
@@ -13,15 +14,15 @@ type userSpec struct {
 	Domain string `json:",omitempty"`
 }
 
-func fromUserSpec(us issues.UserSpec) userSpec {
+func fromUserSpec(us users.UserSpec) userSpec {
 	return userSpec{ID: us.ID, Domain: us.Domain}
 }
 
-func (us userSpec) UserSpec() issues.UserSpec {
-	return issues.UserSpec{ID: us.ID, Domain: us.Domain}
+func (us userSpec) UserSpec() users.UserSpec {
+	return users.UserSpec{ID: us.ID, Domain: us.Domain}
 }
 
-func (us userSpec) Equal(other issues.UserSpec) bool {
+func (us userSpec) Equal(other users.UserSpec) bool {
 	return us.Domain == other.Domain && us.ID == other.ID
 }
 

@@ -3,10 +3,10 @@ package issues
 
 import (
 	"fmt"
-	"html/template"
 	"strings"
 	"time"
 
+	"github.com/shurcooL/users"
 	"golang.org/x/net/context"
 )
 
@@ -44,12 +44,6 @@ type Service interface {
 	Edit(ctx context.Context, repo RepoSpec, id uint64, ir IssueRequest) (Issue, []Event, error)
 	// EditComment edits comment of specified issue id.
 	EditComment(ctx context.Context, repo RepoSpec, id uint64, cr CommentRequest) (Comment, error)
-
-	// Search searches issues.
-	Search(ctx context.Context, opt SearchOptions) (SearchResponse, error)
-
-	// TODO: This doesn't belong here; it should be factored out into a platform Users service that is provided to this service.
-	CurrentUser(ctx context.Context) (*User, error)
 }
 
 // CopierFrom is an optional interface that allows copying issues between services.
@@ -72,7 +66,7 @@ type Issue struct {
 // Comment represents a comment left on an issue.
 type Comment struct {
 	ID        uint64
-	User      User
+	User      users.User
 	CreatedAt time.Time
 	Body      string
 	Reactions []Reaction
@@ -82,21 +76,7 @@ type Comment struct {
 // Reaction represents a single reaction to a comment, backed by 1 or more users.
 type Reaction struct {
 	Reaction EmojiID
-	Users    []User // Length is 1 or more.
-}
-
-// UserSpec is a specification for a user.
-type UserSpec struct {
-	ID     uint64
-	Domain string
-}
-
-// User represents a user, including their details.
-type User struct {
-	UserSpec
-	Login     string
-	AvatarURL template.URL
-	HTMLURL   template.URL
+	Users    []users.User // Length is 1 or more.
 }
 
 // IssueRequest is a request to edit an issue.
@@ -125,30 +105,6 @@ const (
 	// ClosedState is when an issue is closed.
 	ClosedState State = "closed"
 )
-
-// SearchOptions are options for search.
-type SearchOptions struct {
-	Query   string
-	Repo    RepoSpec
-	Page    int
-	PerPage int
-}
-
-// SearchResult represents a single search result.
-type SearchResult struct {
-	ID        string
-	Title     template.HTML
-	Comment   template.HTML
-	User      User
-	CreatedAt time.Time
-	State     State
-}
-
-// SearchResponse is the return value of doing a search.
-type SearchResponse struct {
-	Results []SearchResult
-	Total   uint64
-}
 
 // Validate returns non-nil error if the issue is invalid.
 func (i Issue) Validate() error {

@@ -88,7 +88,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 			State: issue.State,
 			Title: issue.Title,
 			Comment: issues.Comment{
-				User:      s.issuesUser(ctx, author),
+				User:      s.user(ctx, author),
 				CreatedAt: issue.CreatedAt,
 			},
 			Replies: len(comments) - 1,
@@ -129,7 +129,7 @@ func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.Iss
 }
 
 func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issues.Issue, error) {
-	currentUser, err := s.getAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -149,7 +149,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		State: issue.State,
 		Title: issue.Title,
 		Comment: issues.Comment{
-			User:      s.issuesUser(ctx, author),
+			User:      s.user(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Editable:  nil == canEdit(ctx, currentUser, issue.Author),
 		},
@@ -157,7 +157,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 }
 
 func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
-	currentUser, err := s.getAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -186,13 +186,13 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			for _, u := range cr.Authors {
 				reactionAuthor := u.UserSpec()
 				// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
-				reaction.Users = append(reaction.Users, s.issuesUser(ctx, reactionAuthor))
+				reaction.Users = append(reaction.Users, s.user(ctx, reactionAuthor))
 			}
 			reactions = append(reactions, reaction)
 		}
 		comments = append(comments, issues.Comment{
 			ID:        fi.ID,
-			User:      s.issuesUser(ctx, author),
+			User:      s.user(ctx, author),
 			CreatedAt: comment.CreatedAt,
 			Body:      comment.Body,
 			Reactions: reactions,
@@ -222,7 +222,7 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 		actor := event.Actor.UserSpec()
 		events = append(events, issues.Event{
 			ID:        fi.ID,
-			Actor:     s.issuesUser(ctx, actor),
+			Actor:     s.user(ctx, actor),
 			CreatedAt: event.CreatedAt,
 			Type:      event.Type,
 			Rename:    event.Rename,
@@ -234,7 +234,7 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 
 func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
 	// CreateComment operation requires an authenticated user with read access.
-	currentUser, err := s.getAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return issues.Comment{}, err
 	}
@@ -268,7 +268,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 	return issues.Comment{
 		ID:        commentID,
-		User:      s.issuesUser(ctx, author),
+		User:      s.user(ctx, author),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
 		Editable:  true, // You can always edit comments you've created.
@@ -277,7 +277,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
 	// Create operation requires an authenticated user with read access.
-	currentUser, err := s.getAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -334,7 +334,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		Title: issue.Title,
 		Comment: issues.Comment{
 			ID:        0,
-			User:      s.issuesUser(ctx, author),
+			User:      s.user(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Body:      issue.Body,
 			Editable:  true, // You can always edit issues you've created.
@@ -344,7 +344,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 
 // canEdit returns nil error if currentUser is authorized to edit an entry created by author.
 // It returns os.ErrPermission or an error that happened in other cases.
-func canEdit(ctx context.Context, currentUser *issues.UserSpec, author userSpec) error {
+func canEdit(ctx context.Context, currentUser *users.UserSpec, author userSpec) error {
 	if currentUser == nil {
 		// Not logged in, cannot edit anything.
 		return os.ErrPermission
@@ -365,7 +365,7 @@ func canEdit(ctx context.Context, currentUser *issues.UserSpec, author userSpec)
 
 // canReact returns nil error if currentUser is authorized to react to an entry.
 // It returns os.ErrPermission or an error that happened in other cases.
-func canReact(currentUser *issues.UserSpec) error {
+func canReact(currentUser *users.UserSpec) error {
 	if currentUser == nil {
 		// Not logged in, cannot react to anything.
 		return os.ErrPermission
@@ -374,7 +374,7 @@ func canReact(currentUser *issues.UserSpec) error {
 }
 
 func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
-	currentUser, err := s.getAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return issues.Issue{}, nil, err
 	}
@@ -455,7 +455,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 		events = append(events, issues.Event{
 			ID:        eventID,
-			Actor:     s.issuesUser(ctx, actor),
+			Actor:     s.user(ctx, actor),
 			CreatedAt: event.CreatedAt,
 			Type:      event.Type,
 			Rename:    event.Rename,
@@ -468,7 +468,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		Title: issue.Title,
 		Comment: issues.Comment{
 			ID:        0,
-			User:      s.issuesUser(ctx, author),
+			User:      s.user(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Editable:  true, // You can always edit issues you've edited.
 		},
@@ -476,7 +476,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 }
 
 func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
-	currentUser, err := s.getAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return issues.Comment{}, err
 	}
@@ -540,13 +540,13 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 			for _, u := range cr.Authors {
 				reactionAuthor := u.UserSpec()
 				// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
-				reaction.Users = append(reaction.Users, s.issuesUser(ctx, reactionAuthor))
+				reaction.Users = append(reaction.Users, s.user(ctx, reactionAuthor))
 			}
 			reactions = append(reactions, reaction)
 		}
 		return issues.Comment{
 			ID:        0,
-			User:      s.issuesUser(ctx, author),
+			User:      s.user(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Body:      issue.Body,
 			Reactions: reactions,
@@ -601,13 +601,13 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		for _, u := range cr.Authors {
 			reactionAuthor := u.UserSpec()
 			// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
-			reaction.Users = append(reaction.Users, s.issuesUser(ctx, reactionAuthor))
+			reaction.Users = append(reaction.Users, s.user(ctx, reactionAuthor))
 		}
 		reactions = append(reactions, reaction)
 	}
 	return issues.Comment{
 		ID:        cr.ID,
-		User:      s.issuesUser(ctx, author),
+		User:      s.user(ctx, author),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
 		Reactions: reactions,
@@ -616,7 +616,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 }
 
 // toggleReaction toggles reaction emojiID to comment c for specified user u.
-func toggleReaction(c *comment, u issues.UserSpec, emojiID issues.EmojiID) error {
+func toggleReaction(c *comment, u users.UserSpec, emojiID issues.EmojiID) error {
 	reactionsFromUser := 0
 reactionsLoop:
 	for _, r := range c.Reactions {
@@ -669,7 +669,7 @@ reactionsLoop:
 }
 
 // contains returns index of e in set, or -1 if it's not there.
-func contains(set []userSpec, e issues.UserSpec) int {
+func contains(set []userSpec, e users.UserSpec) int {
 	for i, v := range set {
 		if v.Equal(e) {
 			return i
@@ -688,34 +688,6 @@ func nextID(fs webdav.FileSystem, dir string) (uint64, error) {
 		return 1, nil
 	}
 	return fis[len(fis)-1].ID + 1, nil
-}
-
-func (s service) Search(_ context.Context, opt issues.SearchOptions) (issues.SearchResponse, error) {
-	return issues.SearchResponse{}, errors.New("Search endpoint not implemented in fs service implementation")
-}
-
-func (s service) getAuthenticated(ctx context.Context) (*issues.UserSpec, error) {
-	currentUser, err := s.users.GetAuthenticated(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if currentUser == nil {
-		return nil, nil
-	}
-	return &issues.UserSpec{ID: currentUser.ID, Domain: currentUser.Domain}, nil
-}
-
-// TODO: Rename or defer to users.GetAuthenticated even more directly?
-func (s service) CurrentUser(ctx context.Context) (*issues.User, error) {
-	currentUser, err := s.getAuthenticated(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if currentUser == nil {
-		return nil, nil
-	}
-	user := s.issuesUser(ctx, *currentUser)
-	return &user, nil
 }
 
 func formatUint64(n uint64) string { return strconv.FormatUint(n, 10) }

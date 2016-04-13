@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/shurcooL/issues"
+	"github.com/shurcooL/users"
 )
 
 func TestToggleReaction(t *testing.T) {
@@ -15,10 +16,10 @@ func TestToggleReaction(t *testing.T) {
 		},
 	}
 
-	toggleReaction(&c, issues.UserSpec{ID: 1}, issues.EmojiID("foo"))
-	toggleReaction(&c, issues.UserSpec{ID: 1}, issues.EmojiID("bar"))
-	toggleReaction(&c, issues.UserSpec{ID: 1}, issues.EmojiID("baz"))
-	toggleReaction(&c, issues.UserSpec{ID: 2}, issues.EmojiID("bar"))
+	toggleReaction(&c, users.UserSpec{ID: 1}, issues.EmojiID("foo"))
+	toggleReaction(&c, users.UserSpec{ID: 1}, issues.EmojiID("bar"))
+	toggleReaction(&c, users.UserSpec{ID: 1}, issues.EmojiID("baz"))
+	toggleReaction(&c, users.UserSpec{ID: 2}, issues.EmojiID("bar"))
 
 	want := comment{
 		Reactions: []reaction{

@@ -15,13 +15,14 @@ import (
 	"github.com/google/go-github/github"
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/notifications"
+	"github.com/shurcooL/users"
 	"golang.org/x/net/context"
 )
 
 // NewService creates a GitHub-backed issues.Service using given GitHub client,
 // and notifications for external API of Notifications Center app, if any.
 // At this time it infers the current user from the client (its authentication info), and cannot be used to serve multiple users.
-func NewService(client *github.Client, notifications notifications.ExternalService) issues.Service {
+func NewService(client *github.Client, notifications notifications.ExternalService, users users.Service) issues.Service {
 	if client == nil {
 		client = github.NewClient(nil)
 	}
@@ -29,8 +30,12 @@ func NewService(client *github.Client, notifications notifications.ExternalServi
 	s := service{
 		cl:            client,
 		notifications: notifications,
+		users:         users, // TODO: Use it.
 	}
 
+	// TODO: Use users.Service (githubapi implementation) for this...
+	//       Maybe?
+	//s.currentUser, s.currentUserErr = users.GetAuthenticated(context.TODO())
 	if user, _, err := client.Users.Get(""); err == nil {
 		u := ghUser(user)
 		s.currentUser = &u
@@ -54,7 +59,9 @@ type service struct {
 	// Its value is nil if Notification Center app is not started.
 	notifications notifications.ExternalService
 
-	currentUser    *issues.User
+	users users.Service
+
+	currentUser    *users.User
 	currentUserErr error
 }
 
@@ -440,14 +447,6 @@ func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, c
 	}, nil
 }
 
-func (s service) Search(_ context.Context, opt issues.SearchOptions) (issues.SearchResponse, error) {
-	return issues.SearchResponse{}, errors.New("Search endpoint not implemented in GitHub API service implementation")
-}
-
-func (s service) CurrentUser(_ context.Context) (*issues.User, error) {
-	return s.currentUser, s.currentUserErr
-}
-
 type repoSpec struct {
 	Owner string
 	Repo  string
@@ -464,9 +463,9 @@ func ghRepoSpec(repo issues.RepoSpec) repoSpec {
 	}
 }
 
-func ghUser(user *github.User) issues.User {
-	return issues.User{
-		UserSpec: issues.UserSpec{
+func ghUser(user *github.User) users.User {
+	return users.User{
+		UserSpec: users.UserSpec{
 			ID:     uint64(*user.ID),
 			Domain: "github.com",
 		},

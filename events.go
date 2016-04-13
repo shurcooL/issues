@@ -1,11 +1,15 @@
 package issues
 
-import "time"
+import (
+	"time"
+
+	"github.com/shurcooL/users"
+)
 
 // Event represents an event that occurred around an issue.
 type Event struct {
 	ID        uint64
-	Actor     User
+	Actor     users.User
 	CreatedAt time.Time
 	Type      EventType
 	Rename    *Rename
