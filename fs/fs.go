@@ -25,14 +25,19 @@ type service struct {
 	fs webdav.FileSystem
 }*/
 
-// TODO.
-// NewService creates a filesystem-backed issues.Service rooted at rootDir.
+// TODO: Use webdav.FileSystem input?
+//       Like this:
+//
+//       	// NewService creates a virtual filesystem-backed reactions.Service using root for storage.
+//       	func NewService(root webdav.FileSystem, users users.Service) (reactions.Service, error) {
+//
+// NewService creates a filesystem-backed issues.Service rooted at rootDir,
+// which must already exist.
 func NewService(rootDir string, users users.Service) (issues.Service, error) {
 	return service{
 		root:  rootDir,
 		users: users,
 	}, nil
-	// TODO: Return error if rootDir not found, etc.
 }
 
 type service struct {
