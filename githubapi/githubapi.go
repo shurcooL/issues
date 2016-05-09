@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"html/template"
 	"log"
-	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -30,24 +29,10 @@ func NewService(client *github.Client, notifications notifications.ExternalServi
 	s := service{
 		cl:            client,
 		notifications: notifications,
-		users:         users, // TODO: Use it.
+		users:         users,
 	}
 
-	// TODO: Use users.Service (githubapi implementation) for this...
-	//       Maybe?
-	//s.currentUser, s.currentUserErr = users.GetAuthenticated(context.TODO())
-	if user, _, err := client.Users.Get(""); err == nil {
-		u := ghUser(user)
-		s.currentUser = &u
-		s.currentUserErr = nil
-	} else if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == http.StatusUnauthorized {
-		// There's no authenticated user.
-		s.currentUser = nil
-		s.currentUserErr = nil
-	} else {
-		s.currentUser = nil
-		s.currentUserErr = err
-	}
+	s.currentUser, s.currentUserErr = s.users.GetAuthenticated(context.TODO())
 
 	return s
 }
@@ -61,7 +46,7 @@ type service struct {
 
 	users users.Service
 
-	currentUser    *users.User
+	currentUser    users.User
 	currentUserErr error
 }
 
@@ -159,12 +144,12 @@ func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueLi
 
 // canEdit returns nil error if currentUser is authorized to edit an entry created by authorUID.
 // It returns os.ErrPermission or an error that happened in other cases.
-func (s service) canEdit(repo repoSpec, authorLogin string) error {
-	if s.currentUser == nil {
+func (s service) canEdit(repo repoSpec, authorID int) error {
+	if s.currentUser.ID == 0 {
 		// Not logged in, cannot edit anything.
 		return os.ErrPermission
 	}
-	if s.currentUser.Login == authorLogin {
+	if s.currentUser.ID == uint64(authorID) {
 		// If you're the author, you can always edit it.
 		return nil
 	}
@@ -208,7 +193,7 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 		return issues.Issue{}, err
 	}
 
-	if s.currentUser != nil {
+	if s.currentUser.ID != 0 {
 		// Mark as read.
 		err = s.markRead(ctx, rs, id)
 		if err != nil {
@@ -223,7 +208,7 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 		Comment: issues.Comment{
 			User:      ghUser(issue.User),
 			CreatedAt: *issue.CreatedAt,
-			Editable:  nil == s.canEdit(repo, *issue.User.Login),
+			Editable:  nil == s.canEdit(repo, *issue.User.ID),
 		},
 	}, nil
 }
@@ -241,7 +226,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 		User:      ghUser(issue.User),
 		CreatedAt: *issue.CreatedAt,
 		Body:      *issue.Body,
-		Editable:  nil == s.canEdit(repo, *issue.User.Login),
+		Editable:  nil == s.canEdit(repo, *issue.User.ID),
 	})
 
 	ghOpt := &github.IssueListCommentsOptions{}
@@ -256,7 +241,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 				User:      ghUser(comment.User),
 				CreatedAt: *comment.CreatedAt,
 				Body:      *comment.Body,
-				Editable:  nil == s.canEdit(repo, *comment.User.Login),
+				Editable:  nil == s.canEdit(repo, *comment.User.ID),
 			})
 		}
 		if resp.NextPage == 0 {
@@ -364,7 +349,7 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 	// GitHub API doesn't return the event that will be generated as a result, so we predict what it'll be.
 	event := issues.Event{
 		// TODO: Figure out if event ID needs to be set, and if so, how to best do that...
-		Actor:     *s.currentUser, // Only logged in users can edit, so we're guaranteed to have a current user.
+		Actor:     s.currentUser, // Only logged in users can edit, so we're guaranteed to have a current user.
 		CreatedAt: *issue.CreatedAt,
 	}
 	// TODO: A single edit operation can result in multiple events, we should emit multiple events in such cases. We're currently emitting at most one event.

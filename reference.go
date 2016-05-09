@@ -1,8 +1,6 @@
 package issues
 
-import (
-	"html/template"
-)
+import "html/template"
 
 // Reference represents a reference to code.
 type Reference struct {

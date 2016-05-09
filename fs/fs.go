@@ -134,7 +134,7 @@ func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.Iss
 }
 
 func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issues.Issue, error) {
-	currentUser, err := s.users.GetAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticatedSpec(ctx)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -162,7 +162,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 }
 
 func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
-	currentUser, err := s.users.GetAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticatedSpec(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -239,11 +239,11 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 
 func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
 	// CreateComment operation requires an authenticated user with read access.
-	currentUser, err := s.users.GetAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticatedSpec(ctx)
 	if err != nil {
 		return issues.Comment{}, err
 	}
-	if currentUser == nil {
+	if currentUser.ID == 0 {
 		return issues.Comment{}, os.ErrPermission
 	}
 
@@ -254,7 +254,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 	fs := s.namespace(repo.URI)
 
 	comment := comment{
-		Author:    fromUserSpec(*currentUser),
+		Author:    fromUserSpec(currentUser),
 		CreatedAt: time.Now().UTC(),
 		Body:      c.Body,
 	}
@@ -282,11 +282,11 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
 	// Create operation requires an authenticated user with read access.
-	currentUser, err := s.users.GetAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticatedSpec(ctx)
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	if currentUser == nil {
+	if currentUser.ID == 0 {
 		return issues.Issue{}, os.ErrPermission
 	}
 
@@ -307,7 +307,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		State: issues.OpenState,
 		Title: i.Title,
 		comment: comment{
-			Author:    fromUserSpec(*currentUser),
+			Author:    fromUserSpec(currentUser),
 			CreatedAt: time.Now().UTC(),
 			Body:      i.Body,
 		},
@@ -349,12 +349,12 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 
 // canEdit returns nil error if currentUser is authorized to edit an entry created by author.
 // It returns os.ErrPermission or an error that happened in other cases.
-func canEdit(ctx context.Context, currentUser *users.UserSpec, author userSpec) error {
-	if currentUser == nil {
+func canEdit(ctx context.Context, currentUser users.UserSpec, author userSpec) error {
+	if currentUser.ID == 0 {
 		// Not logged in, cannot edit anything.
 		return os.ErrPermission
 	}
-	if author.Equal(*currentUser) {
+	if author.Equal(currentUser) {
 		// If you're the author, you can always edit it.
 		return nil
 	}
@@ -370,8 +370,8 @@ func canEdit(ctx context.Context, currentUser *users.UserSpec, author userSpec) 
 
 // canReact returns nil error if currentUser is authorized to react to an entry.
 // It returns os.ErrPermission or an error that happened in other cases.
-func canReact(currentUser *users.UserSpec) error {
-	if currentUser == nil {
+func canReact(currentUser users.UserSpec) error {
+	if currentUser.ID == 0 {
 		// Not logged in, cannot react to anything.
 		return os.ErrPermission
 	}
@@ -379,11 +379,11 @@ func canReact(currentUser *users.UserSpec) error {
 }
 
 func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
-	currentUser, err := s.users.GetAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticatedSpec(ctx)
 	if err != nil {
 		return issues.Issue{}, nil, err
 	}
-	if currentUser == nil {
+	if currentUser.ID == 0 {
 		return issues.Issue{}, nil, os.ErrPermission
 	}
 
@@ -407,7 +407,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 	author := issue.Author.UserSpec()
-	actor := *currentUser
+	actor := currentUser
 
 	// Apply edits.
 	origState := issue.State
@@ -481,11 +481,11 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 }
 
 func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
-	currentUser, err := s.users.GetAuthenticated(ctx)
+	currentUser, err := s.users.GetAuthenticatedSpec(ctx)
 	if err != nil {
 		return issues.Comment{}, err
 	}
-	if currentUser == nil {
+	if currentUser.ID == 0 {
 		return issues.Comment{}, os.ErrPermission
 	}
 
@@ -525,7 +525,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 			issue.Body = *cr.Body
 		}
 		if cr.Reaction != nil {
-			err := toggleReaction(&issue.comment, *currentUser, *cr.Reaction)
+			err := toggleReaction(&issue.comment, currentUser, *cr.Reaction)
 			if err != nil {
 				return issues.Comment{}, err
 			}
@@ -586,7 +586,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		comment.Body = *cr.Body
 	}
 	if cr.Reaction != nil {
-		err := toggleReaction(&comment, *currentUser, *cr.Reaction)
+		err := toggleReaction(&comment, currentUser, *cr.Reaction)
 		if err != nil {
 			return issues.Comment{}, err
 		}
