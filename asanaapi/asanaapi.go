@@ -117,19 +117,6 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 	}, nil
 }
 
-/*func (s service) user(ctx context.Context, user users.UserSpec) users.User {
-	u, err := s.users.Get(ctx, user)
-	if err != nil {
-		return users.User{
-			UserSpec:  user,
-			Login:     fmt.Sprintf("Anonymous %v", user.ID),
-			AvatarURL: "https://secure.gravatar.com/avatar?d=mm&f=y&s=96",
-			HTMLURL:   "",
-		}
-	}
-	return u
-}*/
-
 func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
 	var comments []issues.Comment
 
