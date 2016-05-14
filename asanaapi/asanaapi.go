@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/shurcooL/issues"
+	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
 	"github.com/tambet/go-asana/asana"
 	"golang.org/x/net/context"
@@ -99,7 +100,7 @@ func state(task asana.Task) issues.State {
 	}
 }
 
-func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues.Issue, error) {
+func (s service) Get(ctx context.Context, _ issues.RepoSpec, id uint64) (issues.Issue, error) {
 	task, err := s.cl.GetTask(int64(id), &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name"}})
 	if err != nil {
 		return issues.Issue{}, err
@@ -117,29 +118,29 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 	}, nil
 }
 
-func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
+func (s service) ListComments(ctx context.Context, _ issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
 	var comments []issues.Comment
 
 	task, err := s.cl.GetTask(int64(id), &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name", "notes"}})
 	if err != nil {
 		return comments, err
 	}
-	var reactions []issues.Reaction
+	var rs []reactions.Reaction
 	if len(task.Hearts) > 0 {
-		reaction := issues.Reaction{
+		reaction := reactions.Reaction{
 			Reaction: "heart",
 		}
 		for _, heart := range task.Hearts {
 			reaction.Users = append(reaction.Users, asanaUser(heart.User))
 		}
-		reactions = append(reactions, reaction)
+		rs = append(rs, reaction)
 	}
 	comments = append(comments, issues.Comment{
 		ID:        uint64(task.ID),
 		User:      asanaUser(task.CreatedBy),
 		CreatedAt: task.CreatedAt,
 		Body:      task.Notes,
-		Reactions: reactions,
+		Reactions: rs,
 		Editable:  false, // TODO.
 	})
 
@@ -152,22 +153,22 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 			continue
 		}
 
-		var reactions []issues.Reaction
+		var rs []reactions.Reaction
 		if len(story.Hearts) > 0 {
-			reaction := issues.Reaction{
+			reaction := reactions.Reaction{
 				Reaction: "heart",
 			}
 			for _, heart := range story.Hearts {
 				reaction.Users = append(reaction.Users, asanaUser(heart.User))
 			}
-			reactions = append(reactions, reaction)
+			rs = append(rs, reaction)
 		}
 		comments = append(comments, issues.Comment{
 			ID:        uint64(story.ID),
 			User:      asanaUser(story.CreatedBy),
 			CreatedAt: story.CreatedAt,
 			Body:      story.Text,
-			Reactions: reactions,
+			Reactions: rs,
 			Editable:  false, // TODO.
 		})
 	}
@@ -175,7 +176,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 	return comments, nil
 }
 
-func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
+func (s service) ListEvents(_ context.Context, _ issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
 	stories, err := s.cl.ListTaskStories(int64(id), &asana.Filter{OptExpand: []string{"created_by"}})
 	if err != nil {
 		return nil, err

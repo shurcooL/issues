@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/shurcooL/issues"
+	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
 )
 
@@ -43,7 +44,7 @@ type comment struct {
 
 // reaction is an on-disk representation of a reaction.
 type reaction struct {
-	EmojiID issues.EmojiID
+	EmojiID reactions.EmojiID
 	Authors []userSpec // Order does not matter; this would be better represented as a set like map[userSpec]struct{}, but we're using JSON and it doesn't support that.
 }
 

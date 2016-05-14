@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
 	"golang.org/x/net/context"
 )
@@ -68,14 +69,8 @@ type Comment struct {
 	User      users.User
 	CreatedAt time.Time
 	Body      string
-	Reactions []Reaction
+	Reactions []reactions.Reaction
 	Editable  bool // Editable represents whether the current user (if any) can perform edit operations on this comment (or the encompassing issue).
-}
-
-// Reaction represents a single reaction to a comment, backed by 1 or more users.
-type Reaction struct {
-	Reaction EmojiID
-	Users    []users.User // Length is 1 or more.
 }
 
 // IssueRequest is a request to edit an issue.
@@ -85,14 +80,11 @@ type IssueRequest struct {
 	Title *string
 }
 
-// EmojiID is the id of a reaction. For example, "+1".
-type EmojiID string
-
 // CommentRequest is a request to edit a comment.
 type CommentRequest struct {
 	ID       uint64
-	Body     *string  // If not nil, set the body.
-	Reaction *EmojiID // If not nil, toggle this reaction.
+	Body     *string            // If not nil, set the body.
+	Reaction *reactions.EmojiID // If not nil, toggle this reaction.
 }
 
 // State represents the issue state.

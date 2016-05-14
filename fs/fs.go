@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/shurcooL/issues"
+	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
 	"golang.org/x/net/context"
 	"golang.org/x/net/webdav"
@@ -183,9 +184,9 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 		}
 
 		author := comment.Author.UserSpec()
-		var reactions []issues.Reaction
+		var rs []reactions.Reaction
 		for _, cr := range comment.Reactions {
-			reaction := issues.Reaction{
+			reaction := reactions.Reaction{
 				Reaction: cr.EmojiID,
 			}
 			for _, u := range cr.Authors {
@@ -193,14 +194,14 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 				// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
 				reaction.Users = append(reaction.Users, s.user(ctx, reactionAuthor))
 			}
-			reactions = append(reactions, reaction)
+			rs = append(rs, reaction)
 		}
 		comments = append(comments, issues.Comment{
 			ID:        fi.ID,
 			User:      s.user(ctx, author),
 			CreatedAt: comment.CreatedAt,
 			Body:      comment.Body,
-			Reactions: reactions,
+			Reactions: rs,
 			Editable:  nil == canEdit(ctx, currentUser, comment.Author),
 		})
 	}
@@ -533,9 +534,9 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 			return issues.Comment{}, err
 		}
 
-		var reactions []issues.Reaction
+		var rs []reactions.Reaction
 		for _, cr := range issue.Reactions {
-			reaction := issues.Reaction{
+			reaction := reactions.Reaction{
 				Reaction: cr.EmojiID,
 			}
 			for _, u := range cr.Authors {
@@ -543,14 +544,14 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 				// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
 				reaction.Users = append(reaction.Users, s.user(ctx, reactionAuthor))
 			}
-			reactions = append(reactions, reaction)
+			rs = append(rs, reaction)
 		}
 		return issues.Comment{
 			ID:        0,
 			User:      s.user(ctx, author),
 			CreatedAt: issue.CreatedAt,
 			Body:      issue.Body,
-			Reactions: reactions,
+			Reactions: rs,
 			Editable:  true, // You can always edit comments you've edited.
 		}, nil
 	}
@@ -594,9 +595,9 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		return issues.Comment{}, err
 	}
 
-	var reactions []issues.Reaction
+	var rs []reactions.Reaction
 	for _, cr := range comment.Reactions {
-		reaction := issues.Reaction{
+		reaction := reactions.Reaction{
 			Reaction: cr.EmojiID,
 		}
 		for _, u := range cr.Authors {
@@ -604,20 +605,20 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 			// TODO: Since we're potentially getting many of the same users multiple times here, consider caching them locally.
 			reaction.Users = append(reaction.Users, s.user(ctx, reactionAuthor))
 		}
-		reactions = append(reactions, reaction)
+		rs = append(rs, reaction)
 	}
 	return issues.Comment{
 		ID:        cr.ID,
 		User:      s.user(ctx, author),
 		CreatedAt: comment.CreatedAt,
 		Body:      comment.Body,
-		Reactions: reactions,
+		Reactions: rs,
 		Editable:  true, // You can always edit comments you've edited.
 	}, nil
 }
 
 // toggleReaction toggles reaction emojiID to comment c for specified user u.
-func toggleReaction(c *comment, u users.UserSpec, emojiID issues.EmojiID) error {
+func toggleReaction(c *comment, u users.UserSpec, emojiID reactions.EmojiID) error {
 	reactionsFromUser := 0
 reactionsLoop:
 	for _, r := range c.Reactions {
