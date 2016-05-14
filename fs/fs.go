@@ -294,10 +294,6 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		return issues.Issue{}, err
 	}
 
-	if i.Reference != nil {
-		return issues.Issue{}, errors.New("Reference not supported in fs service implementation")
-	}
-
 	if err := s.createNamespace(repo.URI); err != nil {
 		return issues.Issue{}, err
 	}

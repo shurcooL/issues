@@ -59,8 +59,7 @@ type Issue struct {
 	State State
 	Title string
 	Comment
-	Reference *Reference
-	Replies   int // Number of replies to this issue (not counting the mandatory issue description comment).
+	Replies int // Number of replies to this issue (not counting the mandatory issue description comment).
 }
 
 // Comment represents a comment left on an issue.
@@ -110,11 +109,6 @@ const (
 func (i Issue) Validate() error {
 	if strings.TrimSpace(i.Title) == "" {
 		return fmt.Errorf("title can't be blank or all whitespace")
-	}
-	if ref := i.Reference; ref != nil {
-		if ref.CommitID == "" {
-			return fmt.Errorf("commit ID is required for reference")
-		}
 	}
 	return nil
 }
