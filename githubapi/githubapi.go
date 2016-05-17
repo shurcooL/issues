@@ -2,10 +2,10 @@
 package githubapi
 
 import (
-	"errors"
 	"fmt"
 	"html/template"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -72,7 +72,7 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 	var is []issues.Issue
 	for _, issue := range ghIssuesAndPRs {
 		// Filter out PRs.
-		if issue.PullRequestLinks != nil {
+		if issue.PullRequestLinks != nil && issue.PullRequestLinks.URL != nil {
 			continue
 		}
 
@@ -213,11 +213,19 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 	}, nil
 }
 
-func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
+func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
 	repo := ghRepoSpec(rs)
 	var comments []issues.Comment
 
 	issue, _, err := s.cl.Issues.Get(repo.Owner, repo.Repo, int(id))
+	if err != nil {
+		return comments, err
+	}
+	issueReactions, err := s.listIssueReactions(repo.Owner, repo.Repo, int(id))
+	if err != nil {
+		return comments, err
+	}
+	reactions, err := s.reactions(ctx, issueReactions)
 	if err != nil {
 		return comments, err
 	}
@@ -226,6 +234,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 		User:      ghUser(issue.User),
 		CreatedAt: *issue.CreatedAt,
 		Body:      *issue.Body,
+		Reactions: reactions,
 		Editable:  nil == s.canEdit(repo, *issue.User.ID),
 	})
 
@@ -236,11 +245,20 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 			return comments, err
 		}
 		for _, comment := range ghComments {
+			commentReactions, err := s.listIssueCommentReactions(repo.Owner, repo.Repo, int(*comment.ID))
+			if err != nil {
+				return comments, err
+			}
+			reactions, err := s.reactions(ctx, commentReactions)
+			if err != nil {
+				return comments, err
+			}
 			comments = append(comments, issues.Comment{
 				ID:        uint64(*comment.ID),
 				User:      ghUser(comment.User),
 				CreatedAt: *comment.CreatedAt,
 				Body:      *comment.Body,
+				Reactions: reactions,
 				Editable:  nil == s.canEdit(repo, *comment.User.ID),
 			})
 		}
@@ -386,50 +404,110 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 	}, events, nil
 }
 
-func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
+func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
 	// TODO: Why Validate here but not CreateComment, etc.? Figure this out. Might only be needed in fs implementation.
 	if _, err := cr.Validate(); err != nil {
 		return issues.Comment{}, err
 	}
 	repo := ghRepoSpec(rs)
 
-	if cr.Body == nil {
-		return issues.Comment{}, errors.New("unsupported EditComment request")
+	if cr.ID == issueDescriptionCommentID {
+		var comment issues.Comment
+
+		// Apply edits.
+		if cr.Body != nil {
+			// Use Issues.Edit() API to edit comment 0 (the issue description).
+			issue, _, err := s.cl.Issues.Edit(repo.Owner, repo.Repo, int(id), &github.IssueRequest{
+				Body: cr.Body,
+			})
+			if err != nil {
+				return issues.Comment{}, err
+			}
+
+			// TODO: Consider setting reactions? But it's semi-expensive (to fetch all user details) and not used by app...
+			comment.ID = issueDescriptionCommentID
+			comment.User = ghUser(issue.User)
+			comment.CreatedAt = *issue.CreatedAt
+			comment.Body = *issue.Body
+			comment.Editable = true // You can always edit comments you've edited.
+		}
+		if cr.Reaction != nil {
+			// Toggle reaction by trying to create it, and if it already existed, then remove it.
+			reaction, resp, err := s.cl.Reactions.CreateIssueReaction(repo.Owner, repo.Repo, int(id), externalizeReaction(*cr.Reaction))
+			if err != nil {
+				return issues.Comment{}, err
+			}
+			if resp.StatusCode == http.StatusOK {
+				// If we got 200 instead of 201, we should be removing the reaction instead.
+				_, err := s.cl.Reactions.DeleteReaction(*reaction.ID)
+				if err != nil {
+					return issues.Comment{}, err
+				}
+			}
+
+			issueReactions, err := s.listIssueReactions(repo.Owner, repo.Repo, int(id))
+			if err != nil {
+				return issues.Comment{}, err
+			}
+			reactions, err := s.reactions(ctx, issueReactions)
+			if err != nil {
+				return issues.Comment{}, err
+			}
+
+			// TODO: Consider setting other fields? But it's semi-expensive (another API call) and not used by app...
+			comment.Reactions = reactions
+		}
+
+		return comment, nil
 	}
 
-	if cr.ID == issueDescriptionCommentID {
-		// Use Issues.Edit() API to edit comment 0 (the issue description).
-		issue, _, err := s.cl.Issues.Edit(repo.Owner, repo.Repo, int(id), &github.IssueRequest{
+	var comment issues.Comment
+
+	// Apply edits.
+	if cr.Body != nil {
+		// GitHub API uses comment ID and doesn't need issue ID. Comment IDs are unique per repo (rather than per issue).
+		ghComment, _, err := s.cl.Issues.EditComment(repo.Owner, repo.Repo, int(cr.ID), &github.IssueComment{
 			Body: cr.Body,
 		})
 		if err != nil {
 			return issues.Comment{}, err
 		}
 
-		return issues.Comment{
-			ID:        issueDescriptionCommentID,
-			User:      ghUser(issue.User),
-			CreatedAt: *issue.CreatedAt,
-			Body:      *issue.Body,
-			Editable:  true, // You can always edit comments you've edited.
-		}, nil
+		// TODO: Consider setting reactions? But it's semi-expensive (to fetch all user details) and not used by app...
+		comment.ID = uint64(*ghComment.ID)
+		comment.User = ghUser(ghComment.User)
+		comment.CreatedAt = *ghComment.CreatedAt
+		comment.Body = *ghComment.Body
+		comment.Editable = true // You can always edit comments you've edited.
+	}
+	if cr.Reaction != nil {
+		// Toggle reaction by trying to create it, and if it already existed, then remove it.
+		reaction, resp, err := s.cl.Reactions.CreateIssueCommentReaction(repo.Owner, repo.Repo, int(cr.ID), externalizeReaction(*cr.Reaction))
+		if err != nil {
+			return issues.Comment{}, err
+		}
+		if resp.StatusCode == http.StatusOK {
+			// If we got 200 instead of 201, we should be removing the reaction instead.
+			_, err := s.cl.Reactions.DeleteReaction(*reaction.ID)
+			if err != nil {
+				return issues.Comment{}, err
+			}
+		}
+
+		commentReactions, err := s.listIssueCommentReactions(repo.Owner, repo.Repo, int(cr.ID))
+		if err != nil {
+			return issues.Comment{}, err
+		}
+		reactions, err := s.reactions(ctx, commentReactions)
+		if err != nil {
+			return issues.Comment{}, err
+		}
+
+		// TODO: Consider setting other fields? But it's semi-expensive (another API call) and not used by app...
+		comment.Reactions = reactions
 	}
 
-	// GitHub API uses comment ID and doesn't need issue ID. Comment IDs are unique per repo (rather than per issue).
-	comment, _, err := s.cl.Issues.EditComment(repo.Owner, repo.Repo, int(cr.ID), &github.IssueComment{
-		Body: cr.Body,
-	})
-	if err != nil {
-		return issues.Comment{}, err
-	}
-
-	return issues.Comment{
-		ID:        uint64(*comment.ID),
-		User:      ghUser(comment.User),
-		CreatedAt: *comment.CreatedAt,
-		Body:      *comment.Body,
-		Editable:  true, // You can always edit comments you've edited.
-	}, nil
+	return comment, nil
 }
 
 type repoSpec struct {
