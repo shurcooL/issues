@@ -225,7 +225,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 	if err != nil {
 		return comments, err
 	}
-	reactions, err := s.reactions(ctx, issueReactions)
+	reactions, err := s.reactions(issueReactions)
 	if err != nil {
 		return comments, err
 	}
@@ -249,7 +249,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 			if err != nil {
 				return comments, err
 			}
-			reactions, err := s.reactions(ctx, commentReactions)
+			reactions, err := s.reactions(commentReactions)
 			if err != nil {
 				return comments, err
 			}
@@ -449,7 +449,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 			if err != nil {
 				return issues.Comment{}, err
 			}
-			reactions, err := s.reactions(ctx, issueReactions)
+			reactions, err := s.reactions(issueReactions)
 			if err != nil {
 				return issues.Comment{}, err
 			}
@@ -498,7 +498,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 		if err != nil {
 			return issues.Comment{}, err
 		}
-		reactions, err := s.reactions(ctx, commentReactions)
+		reactions, err := s.reactions(commentReactions)
 		if err != nil {
 			return issues.Comment{}, err
 		}

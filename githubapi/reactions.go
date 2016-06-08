@@ -4,12 +4,10 @@ import (
 	"github.com/google/go-github/github"
 	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
-	"golang.org/x/net/context"
 )
 
 // reactions converts a []*github.Reaction to []reactions.Reaction.
-// It makes use of users service to get user details.
-func (s service) reactions(ctx context.Context, ghReactions []*github.Reaction) ([]reactions.Reaction, error) {
+func (s service) reactions(ghReactions []*github.Reaction) ([]reactions.Reaction, error) {
 	var rs []reactions.Reaction
 	var m = make(map[string]int) // EmojiID -> rs index.
 	for _, reaction := range ghReactions {
@@ -23,15 +21,11 @@ func (s service) reactions(ctx context.Context, ghReactions []*github.Reaction) 
 			m[*reaction.Content] = i
 		}
 
-		// Only get the details of first few users and authed user.
+		// Only return the details of first few users and authed user.
 		const expandUsers = 10
-		isAuthedUser := s.currentUser.ID != 0 && uint64(*reaction.UserID) == s.currentUser.ID
+		isAuthedUser := s.currentUser.ID != 0 && uint64(*reaction.User.ID) == s.currentUser.ID
 		if len(rs[i].Users) < expandUsers || isAuthedUser {
-			user, err := s.users.Get(ctx, users.UserSpec{ID: uint64(*reaction.UserID), Domain: "github.com"})
-			if err != nil {
-				return rs, err
-			}
-			rs[i].Users = append(rs[i].Users, user)
+			rs[i].Users = append(rs[i].Users, ghUser(reaction.User))
 		} else {
 			rs[i].Users = append(rs[i].Users, users.User{})
 		}
