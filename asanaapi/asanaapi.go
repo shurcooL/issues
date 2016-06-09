@@ -56,12 +56,12 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 		}
 	case issues.StateFilter(issues.ClosedState):
 		// TODO: Filter out complete?
-		tasks, err = s.cl.ListProjectTasks(atoi(rs.URI), &asana.Filter{OptFields: []string{"completed"}})
+		tasks, err = s.cl.ListProjectTasks(atoi(rs.URI), &asana.Filter{OptFields: []string{"completed", "name", "created_at", "created_by.(name|photo.image_128x128)", "hearts"}})
 		if err != nil {
 			return nil, err
 		}
 	case issues.AllStates:
-		tasks, err = s.cl.ListProjectTasks(atoi(rs.URI), &asana.Filter{OptFields: []string{"completed"}})
+		tasks, err = s.cl.ListProjectTasks(atoi(rs.URI), &asana.Filter{OptFields: []string{"completed", "name", "created_at", "created_by.(name|photo.image_128x128)", "hearts"}})
 		if err != nil {
 			return nil, err
 		}
@@ -69,6 +69,10 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 
 	var is []issues.Issue
 	for _, task := range tasks {
+		if opt.State == issues.StateFilter(issues.ClosedState) && !task.Completed {
+			continue
+		}
+
 		is = append(is, issues.Issue{
 			ID:    uint64(task.ID),
 			State: state(task),
@@ -101,7 +105,7 @@ func state(task asana.Task) issues.State {
 }
 
 func (s service) Get(ctx context.Context, _ issues.RepoSpec, id uint64) (issues.Issue, error) {
-	task, err := s.cl.GetTask(int64(id), &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name"}})
+	task, err := s.cl.GetTask(int64(id), &asana.Filter{OptFields: []string{"completed", "created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name"}})
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -192,7 +196,7 @@ func (s service) ListEvents(_ context.Context, _ issues.RepoSpec, id uint64, opt
 		switch {
 		case story.Text == "marked incomplete":
 			et = issues.Reopened
-		case story.Text == "marked this task complete":
+		case story.Text == "marked this task complete" || story.Text == "completed this task":
 			et = issues.Closed
 		case strings.HasPrefix(story.Text, "added to ") || strings.HasPrefix(story.Text, "♥ "):
 			continue
