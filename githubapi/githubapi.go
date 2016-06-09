@@ -142,7 +142,7 @@ func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueLi
 	return count, nil
 }
 
-// canEdit returns nil error if currentUser is authorized to edit an entry created by authorUID.
+// canEdit returns nil error if currentUser is authorized to edit an entry created by authorID.
 // It returns os.ErrPermission or an error that happened in other cases.
 func (s service) canEdit(repo repoSpec, authorID int) error {
 	if s.currentUser.ID == 0 {
