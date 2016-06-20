@@ -144,7 +144,7 @@ func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueLi
 
 // canEdit returns nil error if currentUser is authorized to edit an entry created by authorID.
 // It returns os.ErrPermission or an error that happened in other cases.
-func (s service) canEdit(repo repoSpec, authorID int) error {
+func (s service) canEdit(isCollaborator bool, isCollaboratorErr error, authorID int) error {
 	if s.currentUser.ID == 0 {
 		// Not logged in, cannot edit anything.
 		return os.ErrPermission
@@ -153,9 +153,8 @@ func (s service) canEdit(repo repoSpec, authorID int) error {
 		// If you're the author, you can always edit it.
 		return nil
 	}
-	isCollaborator, _, err := s.cl.Repositories.IsCollaborator(repo.Owner, repo.Repo, s.currentUser.Login)
-	if err != nil {
-		return err
+	if isCollaboratorErr != nil {
+		return isCollaboratorErr
 	}
 	switch isCollaborator {
 	case true:
@@ -201,6 +200,13 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 		}
 	}
 
+	// TODO, THINK: Where's the best place for this? It should be inside canEdit, but don't want to
+	//              do it more than 1 per service call. Perhaps store/check inside request context?
+	//
+	//              In here it doesn't matter since Get only calls canEdit once; but it matters for
+	//              ListComments because it has canEdit inside a for loop.
+	isCollaborator, _, isCollaboratorErr := s.cl.Repositories.IsCollaborator(repo.Owner, repo.Repo, s.currentUser.Login)
+
 	return issues.Issue{
 		ID:    uint64(*issue.Number),
 		State: issues.State(*issue.State),
@@ -208,7 +214,7 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 		Comment: issues.Comment{
 			User:      ghUser(issue.User),
 			CreatedAt: *issue.CreatedAt,
-			Editable:  nil == s.canEdit(repo, *issue.User.ID),
+			Editable:  nil == s.canEdit(isCollaborator, isCollaboratorErr, *issue.User.ID),
 		},
 	}, nil
 }
@@ -216,6 +222,10 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
 	repo := ghRepoSpec(rs)
 	var comments []issues.Comment
+
+	// TODO, THINK: Where's the best place for this? It should be inside canEdit, but don't want to
+	//              do it more than 1 per service call. Perhaps store/check inside request context?
+	isCollaborator, _, isCollaboratorErr := s.cl.Repositories.IsCollaborator(repo.Owner, repo.Repo, s.currentUser.Login)
 
 	issue, _, err := s.cl.Issues.Get(repo.Owner, repo.Repo, int(id))
 	if err != nil {
@@ -235,7 +245,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 		CreatedAt: *issue.CreatedAt,
 		Body:      *issue.Body,
 		Reactions: reactions,
-		Editable:  nil == s.canEdit(repo, *issue.User.ID),
+		Editable:  nil == s.canEdit(isCollaborator, isCollaboratorErr, *issue.User.ID),
 	})
 
 	ghOpt := &github.IssueListCommentsOptions{}
@@ -259,7 +269,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 				CreatedAt: *comment.CreatedAt,
 				Body:      *comment.Body,
 				Reactions: reactions,
-				Editable:  nil == s.canEdit(repo, *comment.User.ID),
+				Editable:  nil == s.canEdit(isCollaborator, isCollaboratorErr, *comment.User.ID),
 			})
 		}
 		if resp.NextPage == 0 {
