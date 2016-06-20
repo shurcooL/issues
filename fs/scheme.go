@@ -1,15 +1,18 @@
 package fs
 
 import (
+	"os"
 	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
+	"golang.org/x/net/webdav"
 )
 
-// userSpec is an on-disk representation of a specification for a user.
+// userSpec is an on-disk representation of users.UserSpec.
 type userSpec struct {
 	ID     uint64
 	Domain string `json:",omitempty"`
@@ -27,14 +30,14 @@ func (us userSpec) Equal(other users.UserSpec) bool {
 	return us.Domain == other.Domain && us.ID == other.ID
 }
 
-// issue is an on-disk representation of an issue.
+// issue is an on-disk representation of issues.Issue.
 type issue struct {
 	State issues.State
 	Title string
 	comment
 }
 
-// comment is an on-disk representation of a comment.
+// comment is an on-disk representation of issues.Comment.
 type comment struct {
 	Author    userSpec
 	CreatedAt time.Time
@@ -42,19 +45,36 @@ type comment struct {
 	Reactions []reaction `json:",omitempty"`
 }
 
-// reaction is an on-disk representation of a reaction.
+// reaction is an on-disk representation of reactions.Reaction.
 type reaction struct {
 	EmojiID reactions.EmojiID
-	Authors []userSpec // Order does not matter; this would be better represented as a set like map[userSpec]struct{}, but we're using JSON and it doesn't support that.
+	Authors []userSpec // First entry is first person who reacted.
 }
 
-// event is an on-disk representation of an event.
+// event is an on-disk representation of issues.Event.
 type event struct {
 	Actor     userSpec
 	CreatedAt time.Time
 	Type      issues.EventType
 	Rename    *issues.Rename `json:",omitempty"`
 }
+
+// Tree layout:
+//
+// 	root
+// 	└── domain.com
+// 	    └── path
+// 	        └── issues
+// 	            ├── 1
+// 	            │   ├── 0 - encoded issue
+// 	            │   ├── 1 - encoded comment
+// 	            │   ├── 2
+// 	            │   └── events
+// 	            │       ├── 1 - encoded event
+// 	            │       └── 2
+// 	            └── 2
+// 	                ├── 0
+// 	                └── events
 
 const (
 	// issuesDir is '/'-separated path for issue storage.
@@ -63,6 +83,17 @@ const (
 	// eventsDir is dir name for issue events.
 	eventsDir = "events"
 )
+
+// TODO: Merge this path segment into issuesDir, etc.
+func (s service) namespace(repoURI string) webdav.FileSystem {
+	return webdav.Dir(filepath.Join(s.root, filepath.FromSlash(repoURI)))
+}
+func (s service) createNamespace(repoURI string) error {
+	// Only needed for first issue in the repo.
+	// TODO: Make this better, use vfsutil.MkdirAll(fs webdav.FileSystem, ...).
+	//       Consider implicit dir adapter?
+	return os.MkdirAll(filepath.Join(s.root, filepath.FromSlash(repoURI), issuesDir), 0755)
+}
 
 func issueDir(issueID uint64) string {
 	return path.Join(issuesDir, formatUint64(issueID))

@@ -4,7 +4,6 @@ package fs
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -15,47 +14,30 @@ import (
 	"golang.org/x/net/webdav"
 )
 
-// NewService creates a virtual filesystem-backed issues.Service using root for storage.
-/*func NewService(root webdav.FileSystem) issues.Service {
-	return service{
-		fs: root,
-	}
-}
-
-type service struct {
-	fs webdav.FileSystem
-}*/
-
 // TODO: Use webdav.FileSystem input?
 //       Like this:
 //
-//       	// NewService creates a virtual filesystem-backed reactions.Service using root for storage.
-//       	func NewService(root webdav.FileSystem, users users.Service) (reactions.Service, error) {
+//       	// NewService creates a virtual filesystem-backed issues.Service using root for storage.
+//       	func NewService(root webdav.FileSystem, users users.Service) (issues.Service, error) {
 //
 // NewService creates a filesystem-backed issues.Service rooted at rootDir,
 // which must already exist.
 func NewService(rootDir string, users users.Service) (issues.Service, error) {
 	return service{
+		//fs:  root,
 		root:  rootDir,
 		users: users,
 	}, nil
 }
 
 type service struct {
+	// TODO: Use this instead of root string?
+	//fs webdav.FileSystem
+
 	// root directory for issue storage for all repos.
 	root string
 
 	users users.Service
-}
-
-// TODO.
-func (s service) namespace(repoURI string) webdav.FileSystem {
-	return webdav.Dir(filepath.Join(s.root, filepath.FromSlash(repoURI)))
-}
-func (s service) createNamespace(repoURI string) error {
-	// Only needed for first issue in the repo.
-	// TODO: Can this be better?
-	return os.MkdirAll(filepath.Join(s.root, filepath.FromSlash(repoURI), issuesDir), 0755)
 }
 
 func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
@@ -618,6 +600,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 }
 
 // toggleReaction toggles reaction emojiID to comment c for specified user u.
+// If user is creating a new reaction, they get added to the end of reaction authors.
 func toggleReaction(c *comment, u users.UserSpec, emojiID reactions.EmojiID) error {
 	reactionsFromUser := 0
 reactionsLoop:

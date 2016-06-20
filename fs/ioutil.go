@@ -58,10 +58,7 @@ func jsonEncodeFile(fs webdav.FileSystem, path string, v interface{}) error {
 	}
 	err = json.NewEncoder(f).Encode(v)
 	_ = f.Close()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // jsonDecodeFile decodes contents of file at path into v.
@@ -72,8 +69,5 @@ func jsonDecodeFile(fs webdav.FileSystem, path string, v interface{}) error {
 	}
 	err = json.NewDecoder(f).Decode(v)
 	_ = f.Close()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
