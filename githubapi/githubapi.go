@@ -6,9 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/google/go-github/github"
@@ -163,26 +161,6 @@ func (s service) canEdit(isCollaborator bool, isCollaboratorErr error, authorID 
 	default:
 		return os.ErrPermission
 	}
-}
-
-// TODO: Dedup.
-func parseIssueSpec(issueAPIURL string) (issues.RepoSpec, int, error) {
-	u, err := url.Parse(issueAPIURL)
-	if err != nil {
-		return issues.RepoSpec{}, 0, err
-	}
-	e := strings.Split(u.Path, "/")
-	if len(e) < 5 {
-		return issues.RepoSpec{}, 0, fmt.Errorf("unexpected path (too few elements): %q", u.Path)
-	}
-	if got, want := e[len(e)-2], "issues"; got != want {
-		return issues.RepoSpec{}, 0, fmt.Errorf(`unexpected path element %q, expecting %q`, got, want)
-	}
-	id, err := strconv.Atoi(e[len(e)-1])
-	if err != nil {
-		return issues.RepoSpec{}, 0, err
-	}
-	return issues.RepoSpec{URI: e[len(e)-4] + "/" + e[len(e)-3]}, id, nil
 }
 
 func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues.Issue, error) {
