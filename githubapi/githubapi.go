@@ -49,7 +49,7 @@ type service struct {
 }
 
 // We use 0 as a special ID for the comment that is the issue description. This comment is edited differently.
-const issueDescriptionCommentID = uint64(0)
+const issueDescriptionCommentID uint64 = 0
 
 func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
 	repo := ghRepoSpec(rs)

@@ -4,6 +4,7 @@ package asanaapi
 import (
 	"fmt"
 	"html/template"
+	"os"
 	"strconv"
 	"strings"
 
@@ -39,6 +40,9 @@ type service struct {
 	currentUser    users.UserSpec
 	currentUserErr error
 }
+
+// We use 0 as a special ID for the comment that is the issue description. This comment is edited differently.
+const issueDescriptionCommentID uint64 = 0
 
 func atoi(s string) int64 {
 	i, _ := strconv.ParseInt(s, 10, 64)
@@ -78,6 +82,7 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 			State: state(task),
 			Title: task.Name,
 			Comment: issues.Comment{
+				ID:        issueDescriptionCommentID,
 				User:      asanaUser(task.CreatedBy),
 				CreatedAt: task.CreatedAt,
 			},
@@ -115,6 +120,7 @@ func (s service) Get(ctx context.Context, _ issues.RepoSpec, id uint64) (issues.
 		State: state(task),
 		Title: task.Name,
 		Comment: issues.Comment{
+			ID:        issueDescriptionCommentID,
 			User:      asanaUser(task.CreatedBy),
 			CreatedAt: task.CreatedAt,
 			Editable:  false, // TODO.
@@ -122,8 +128,37 @@ func (s service) Get(ctx context.Context, _ issues.RepoSpec, id uint64) (issues.
 	}, nil
 }
 
+// canEdit returns nil error if currentUser is authorized to edit an entry created by authorID.
+// It returns os.ErrPermission or an error that happened in other cases.
+func (s service) canEdit(isCollaborator bool, isCollaboratorErr error, authorID int64) error {
+	if s.currentUser.ID == 0 {
+		// Not logged in, cannot edit anything.
+		return os.ErrPermission
+	}
+	if s.currentUser.ID == uint64(authorID) {
+		// If you're the author, you can always edit it.
+		return nil
+	}
+	if isCollaboratorErr != nil {
+		return isCollaboratorErr
+	}
+	switch isCollaborator {
+	case true:
+		// If you have write access (or greater), you can edit.
+		return nil
+	default:
+		return os.ErrPermission
+	}
+}
+
 func (s service) ListComments(ctx context.Context, _ issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
 	var comments []issues.Comment
+
+	// TODO: Figure this out.
+	var (
+		isCollaborator    = true
+		isCollaboratorErr error
+	)
 
 	task, err := s.cl.GetTask(int64(id), &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name", "notes"}})
 	if err != nil {
@@ -140,12 +175,12 @@ func (s service) ListComments(ctx context.Context, _ issues.RepoSpec, id uint64,
 		rs = append(rs, reaction)
 	}
 	comments = append(comments, issues.Comment{
-		ID:        uint64(task.ID),
+		ID:        issueDescriptionCommentID,
 		User:      asanaUser(task.CreatedBy),
 		CreatedAt: task.CreatedAt,
 		Body:      task.Notes,
 		Reactions: rs,
-		Editable:  false, // TODO.
+		Editable:  nil == s.canEdit(isCollaborator, isCollaboratorErr, task.CreatedBy.ID),
 	})
 
 	stories, err := s.cl.ListTaskStories(int64(id), &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "hearts.user.name", "text", "type"}})
@@ -236,8 +271,49 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 }
 
 func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
+	if _, err := cr.Validate(); err != nil {
+		return issues.Comment{}, err
+	}
+	// TODO: Move into internal (Asana-specific) CommentRequest validation?
+	if cr.Reaction != nil && *cr.Reaction != "heart" { // The only allowed emoji by Asana.
+		return issues.Comment{}, fmt.Errorf("reaction with emoji %q is not supported", *cr.Reaction)
+	}
+	// TODO: Check that one of (cr.Body != nil || cr.Reaction != nil) is true?
+
+	if cr.ID == issueDescriptionCommentID {
+		tu := asana.TaskUpdate{
+			Notes: cr.Body,
+		}
+		if cr.Reaction != nil && *cr.Reaction == "heart" {
+			hearted := true // TODO: Figure out the true/false value...
+			tu.Hearted = &hearted
+		}
+		task, err := s.cl.UpdateTask(int64(id), tu, &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name", "notes"}})
+		if err != nil {
+			return issues.Comment{}, err
+		}
+		var rs []reactions.Reaction
+		if len(task.Hearts) > 0 {
+			reaction := reactions.Reaction{
+				Reaction: "heart",
+			}
+			for _, heart := range task.Hearts {
+				reaction.Users = append(reaction.Users, asanaUser(heart.User))
+			}
+			rs = append(rs, reaction)
+		}
+		return issues.Comment{
+			ID:        issueDescriptionCommentID,
+			User:      asanaUser(task.CreatedBy),
+			CreatedAt: task.CreatedAt,
+			Body:      task.Notes,
+			Reactions: rs,
+			Editable:  true, // You can always edit comments you've edited.
+		}, nil
+	}
+
 	// TODO.
-	return issues.Comment{}, fmt.Errorf("EditComment: not implemented")
+	return issues.Comment{}, fmt.Errorf("EditComment(id %v, cr.ID %v): not implemented", id, cr.ID)
 }
 
 func asanaUser(user asana.User) users.User {
