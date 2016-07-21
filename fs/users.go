@@ -12,7 +12,7 @@ func (s service) user(ctx context.Context, user users.UserSpec) users.User {
 	if err != nil {
 		return users.User{
 			UserSpec:  user,
-			Login:     fmt.Sprintf("Anonymous %v", user.ID),
+			Login:     fmt.Sprintf("%d@%v", user.ID, user.Domain),
 			AvatarURL: "https://secure.gravatar.com/avatar?d=mm&f=y&s=96",
 			HTMLURL:   "",
 		}
