@@ -74,10 +74,18 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 			continue
 		}
 
+		var labels []issues.Label
+		for _, l := range issue.Labels {
+			labels = append(labels, issues.Label{
+				Name:  *l.Name,
+				Color: ghColor(*l.Color),
+			})
+		}
 		is = append(is, issues.Issue{
-			ID:    uint64(*issue.Number),
-			State: issues.State(*issue.State),
-			Title: *issue.Title,
+			ID:     uint64(*issue.Number),
+			State:  issues.State(*issue.State),
+			Title:  *issue.Title,
+			Labels: labels,
 			Comment: issues.Comment{
 				User:      ghUser(issue.User),
 				CreatedAt: *issue.CreatedAt,
@@ -524,4 +532,12 @@ func ghUser(user *github.User) users.User {
 		AvatarURL: template.URL(*user.AvatarURL),
 		HTMLURL:   template.URL(*user.HTMLURL),
 	}
+}
+
+// ghColor converts a GitHub color hex string like "ff0000"
+// into an issues.RGB value.
+func ghColor(hex string) issues.RGB {
+	var c issues.RGB
+	fmt.Sscanf(hex, "%02x%02x%02x", &c.R, &c.G, &c.B)
+	return c
 }

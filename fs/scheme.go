@@ -30,11 +30,31 @@ func (us userSpec) Equal(other users.UserSpec) bool {
 	return us.Domain == other.Domain && us.ID == other.ID
 }
 
+// rgb is an on-disk representation of issues.RGB.
+type rgb struct {
+	R, G, B uint8
+}
+
+func fromRGB(c issues.RGB) rgb {
+	return rgb{R: c.R, G: c.G, B: c.B}
+}
+
+func (c rgb) RGB() issues.RGB {
+	return issues.RGB{R: c.R, G: c.G, B: c.B}
+}
+
 // issue is an on-disk representation of issues.Issue.
 type issue struct {
-	State issues.State
-	Title string
+	State  issues.State
+	Title  string
+	Labels []label
 	comment
+}
+
+// label is an on-disk representation of issues.Label.
+type label struct {
+	Name  string
+	Color rgb
 }
 
 // comment is an on-disk representation of issues.Comment.

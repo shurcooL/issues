@@ -65,16 +65,23 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 			continue
 		}
 
-		// Count comments.
-		comments, err := readDirIDs(fs, issueDir(dir.ID))
+		comments, err := readDirIDs(fs, issueDir(dir.ID)) // Count comments.
 		if err != nil {
 			return is, err
 		}
 		author := issue.Author.UserSpec()
+		var labels []issues.Label
+		for _, l := range issue.Labels {
+			labels = append(labels, issues.Label{
+				Name:  l.Name,
+				Color: l.Color.RGB(),
+			})
+		}
 		is = append(is, issues.Issue{
-			ID:    dir.ID,
-			State: issue.State,
-			Title: issue.Title,
+			ID:     dir.ID,
+			State:  issue.State,
+			Title:  issue.Title,
+			Labels: labels,
 			Comment: issues.Comment{
 				User:      s.user(ctx, author),
 				CreatedAt: issue.CreatedAt,

@@ -3,6 +3,7 @@ package issues
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
@@ -56,11 +57,56 @@ type CopierFrom interface {
 
 // Issue represents an issue on a repository.
 type Issue struct {
-	ID    uint64
-	State State
-	Title string
+	ID     uint64
+	State  State
+	Title  string
+	Labels []Label
 	Comment
 	Replies int // Number of replies to this issue (not counting the mandatory issue description comment).
+}
+
+// Label represents a label.
+type Label struct {
+	Name  string
+	Color RGB
+}
+
+// FontColor returns one of "#fff" or "#000", whichever is a better fit for
+// the font color given the label color.
+func (l Label) FontColor() string {
+	// Convert label color to 8-bit grayscale, and make a decision based on that.
+	switch y := color.GrayModel.Convert(l.Color).(color.Gray).Y; {
+	case y < 128:
+		return "#fff"
+	case y >= 128:
+		return "#000"
+	default:
+		panic("unreachable")
+	}
+}
+
+// TODO: Dedup.
+//
+// RGB represents a 24-bit color without alpha channel.
+type RGB struct {
+	R, G, B uint8
+}
+
+func (c RGB) RGBA() (r, g, b, a uint32) {
+	r = uint32(c.R)
+	r |= r << 8
+	g = uint32(c.G)
+	g |= g << 8
+	b = uint32(c.B)
+	b |= b << 8
+	a = uint32(255)
+	a |= a << 8
+	return
+}
+
+// HexString returns a hexadecimal color string. For example, "#ff0000" for red.
+func (c RGB) HexString() string {
+	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
 }
 
 // Comment represents a comment left on an issue.
@@ -78,6 +124,7 @@ type Comment struct {
 type IssueRequest struct {
 	State *State
 	Title *string
+	// TODO: Labels *[]Label
 }
 
 // CommentRequest is a request to edit a comment.
