@@ -80,9 +80,8 @@ func (l Label) FontColor() string {
 		return "#fff"
 	case y >= 128:
 		return "#000"
-	default:
-		panic("unreachable")
 	}
+	panic("unreachable")
 }
 
 // TODO: Dedup.
