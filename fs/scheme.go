@@ -47,7 +47,7 @@ func (c rgb) RGB() issues.RGB {
 type issue struct {
 	State  issues.State
 	Title  string
-	Labels []label
+	Labels []label `json:",omitempty"`
 	comment
 }
 
