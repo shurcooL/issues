@@ -3,11 +3,14 @@ package fs
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/shurcooL/issues"
+	"github.com/shurcooL/notifications"
 	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
 	"golang.org/x/net/context"
@@ -21,12 +24,13 @@ import (
 //       	func NewService(root webdav.FileSystem, users users.Service) (issues.Service, error) {
 //
 // NewService creates a filesystem-backed issues.Service rooted at rootDir,
-// which must already exist.
-func NewService(rootDir string, users users.Service) (issues.Service, error) {
+// which must already exist. It uses notifications service, if not nil.
+func NewService(rootDir string, notifications notifications.ExternalService, users users.Service) (issues.Service, error) {
 	return service{
 		//fs:  root,
-		root:  rootDir,
-		users: users,
+		root:          rootDir,
+		notifications: notifications,
+		users:         users,
 	}, nil
 }
 
@@ -36,6 +40,9 @@ type service struct {
 
 	// root directory for issue storage for all repos.
 	root string
+
+	// notifications may be nil if there's no notifications service.
+	notifications notifications.ExternalService
 
 	users users.Service
 }
@@ -138,6 +145,14 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 	}
 
 	author := issue.Author.UserSpec()
+
+	if currentUser.ID != 0 {
+		// Mark as read.
+		err = s.markRead(ctx, repo, id)
+		if err != nil {
+			log.Println("service.Get: failed to s.markRead:", err)
+		}
+	}
 
 	return issues.Issue{
 		ID:    id,
@@ -261,6 +276,19 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 		return issues.Comment{}, err
 	}
 
+	// Subscribe interested users.
+	err = s.subscribe(ctx, repo, id, author, c.Body)
+	if err != nil {
+		log.Println("service.CreateComment: failed to s.subscribe:", err)
+	}
+
+	// Notify subscribed users.
+	// TODO: Come up with a better way to compute fragment; that logic shouldn't be duplicated here from issuesapp router.
+	err = s.notify(ctx, repo, id, fmt.Sprintf("comment-%d", commentID), comment.CreatedAt)
+	if err != nil {
+		log.Println("service.CreateComment: failed to s.notify:", err)
+	}
+
 	return issues.Comment{
 		ID:        commentID,
 		User:      s.user(ctx, author),
@@ -317,6 +345,18 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	err = jsonEncodeFile(fs, issueCommentPath(issueID, 0), issue)
 	if err != nil {
 		return issues.Issue{}, err
+	}
+
+	// Subscribe interested users.
+	err = s.subscribe(ctx, repo, issueID, author, i.Body)
+	if err != nil {
+		log.Println("service.Create: failed to s.subscribe:", err)
+	}
+
+	// Notify subscribed users.
+	err = s.notify(ctx, repo, issueID, "", issue.CreatedAt)
+	if err != nil {
+		log.Println("service.Create: failed to s.notify:", err)
 	}
 
 	return issues.Issue{
@@ -453,6 +493,21 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		})
 	}
 
+	if ir.State != nil && *ir.State != origState {
+		// Subscribe interested users.
+		err = s.subscribe(ctx, repo, id, actor, "")
+		if err != nil {
+			log.Println("service.Edit: failed to s.subscribe:", err)
+		}
+
+		// Notify subscribed users.
+		// TODO: Maybe set fragment to fmt.Sprintf("event-%d", eventID), etc.
+		err = s.notify(ctx, repo, id, "", createdAt)
+		if err != nil {
+			log.Println("service.Edit: failed to s.notify:", err)
+		}
+	}
+
 	return issues.Issue{
 		ID:    id,
 		State: issue.State,
@@ -505,6 +560,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 		author := issue.Author.UserSpec()
+		actor := currentUser
 
 		// Apply edits.
 		if cr.Body != nil {
@@ -521,6 +577,16 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		err = jsonEncodeFile(fs, issueCommentPath(id, 0), issue)
 		if err != nil {
 			return issues.Comment{}, err
+		}
+
+		if cr.Body != nil {
+			// Subscribe interested users.
+			err = s.subscribe(ctx, repo, id, actor, *cr.Body)
+			if err != nil {
+				log.Println("service.EditComment: failed to s.subscribe:", err)
+			}
+
+			// TODO: Notify _newly mentioned_ users.
 		}
 
 		var rs []reactions.Reaction
@@ -566,6 +632,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 	author := comment.Author.UserSpec()
+	actor := currentUser
 
 	// Apply edits.
 	if cr.Body != nil {
@@ -582,6 +649,16 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	err = jsonEncodeFile(fs, issueCommentPath(id, cr.ID), comment)
 	if err != nil {
 		return issues.Comment{}, err
+	}
+
+	if cr.Body != nil {
+		// Subscribe interested users.
+		err = s.subscribe(ctx, repo, id, actor, *cr.Body)
+		if err != nil {
+			log.Println("service.EditComment: failed to s.subscribe:", err)
+		}
+
+		// TODO: Notify _newly mentioned_ users.
 	}
 
 	var rs []reactions.Reaction
