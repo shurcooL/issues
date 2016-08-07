@@ -16,9 +16,9 @@ import (
 	"golang.org/x/net/context"
 )
 
-// NewService creates a GitHub-backed issues.Service using given GitHub client,
-// and notifications for external API of Notifications Center app, if any.
-// At this time it infers the current user from the client (its authentication info), and cannot be used to serve multiple users.
+// NewService creates a GitHub-backed issues.Service using given GitHub client.
+// It uses notifications service, if not nil. At this time it infers the current user
+// from the client (its authentication info), and cannot be used to serve multiple users.
 func NewService(client *github.Client, notifications notifications.ExternalService, users users.Service) issues.Service {
 	if client == nil {
 		client = github.NewClient(nil)
@@ -38,8 +38,7 @@ func NewService(client *github.Client, notifications notifications.ExternalServi
 type service struct {
 	cl *github.Client
 
-	// notifications is the external API of Notifications Center app.
-	// Its value is nil if Notification Center app is not started.
+	// notifications may be nil if there's no notifications service.
 	notifications notifications.ExternalService
 
 	users users.Service
