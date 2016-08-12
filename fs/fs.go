@@ -284,7 +284,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 
 	// Notify subscribed users.
 	// TODO: Come up with a better way to compute fragment; that logic shouldn't be duplicated here from issuesapp router.
-	err = s.notify(ctx, repo, id, fmt.Sprintf("comment-%d", commentID), comment.CreatedAt)
+	err = s.notify(ctx, repo, id, fmt.Sprintf("comment-%d", commentID), author, comment.CreatedAt)
 	if err != nil {
 		log.Println("service.CreateComment: failed to s.notify:", err)
 	}
@@ -354,7 +354,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	}
 
 	// Notify subscribed users.
-	err = s.notify(ctx, repo, issueID, "", issue.CreatedAt)
+	err = s.notify(ctx, repo, issueID, "", author, issue.CreatedAt)
 	if err != nil {
 		log.Println("service.Create: failed to s.notify:", err)
 	}
@@ -502,7 +502,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 		// Notify subscribed users.
 		// TODO: Maybe set fragment to fmt.Sprintf("event-%d", eventID), etc.
-		err = s.notify(ctx, repo, id, "", createdAt)
+		err = s.notify(ctx, repo, id, "", actor, createdAt)
 		if err != nil {
 			log.Println("service.Edit: failed to s.notify:", err)
 		}

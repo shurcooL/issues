@@ -42,7 +42,7 @@ func (s service) markRead(ctx context.Context, repo issues.RepoSpec, issueID uin
 }
 
 // notify notifies all subscribed users of an update that shows up in their Notification Center.
-func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint64, fragment string, createdAt time.Time) error {
+func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint64, fragment string, actor users.UserSpec, createdAt time.Time) error {
 	if s.notifications == nil {
 		return nil
 	}
@@ -66,6 +66,7 @@ func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint6
 		Title:     issue.Title,
 		Icon:      notificationIcon(issue.State),
 		Color:     notificationColor(issue.State),
+		Actor:     actor,
 		UpdatedAt: createdAt,
 		HTMLURL:   htmlURL,
 	}
