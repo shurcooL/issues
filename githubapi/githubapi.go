@@ -51,7 +51,10 @@ type service struct {
 const issueDescriptionCommentID uint64 = 0
 
 func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
-	repo := ghRepoSpec(rs)
+	repo, err := ghRepoSpec(rs)
+	if err != nil {
+		return nil, err
+	}
 	ghOpt := github.IssueListByRepoOptions{}
 	switch opt.State {
 	case issues.StateFilter(issues.OpenState):
@@ -97,7 +100,10 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 }
 
 func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
-	repo := ghRepoSpec(rs)
+	repo, err := ghRepoSpec(rs)
+	if err != nil {
+		return 0, err
+	}
 	var ghState string
 	switch opt.State {
 	case issues.StateFilter(issues.OpenState):
@@ -171,7 +177,10 @@ func (s service) canEdit(isCollaborator bool, isCollaboratorErr error, authorID 
 }
 
 func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues.Issue, error) {
-	repo := ghRepoSpec(rs)
+	repo, err := ghRepoSpec(rs)
+	if err != nil {
+		return issues.Issue{}, err
+	}
 	issue, _, err := s.cl.Issues.Get(repo.Owner, repo.Repo, int(id))
 	if err != nil {
 		return issues.Issue{}, err
@@ -205,7 +214,10 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 }
 
 func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
-	repo := ghRepoSpec(rs)
+	repo, err := ghRepoSpec(rs)
+	if err != nil {
+		return nil, err
+	}
 	var comments []issues.Comment
 
 	// TODO, THINK: Where's the best place for this? It should be inside canEdit, but don't want to
@@ -267,7 +279,10 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 }
 
 func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
-	repo := ghRepoSpec(rs)
+	repo, err := ghRepoSpec(rs)
+	if err != nil {
+		return nil, err
+	}
 	var events []issues.Event
 
 	ghEvents, _, err := s.cl.Issues.ListIssueEvents(repo.Owner, repo.Repo, int(id), nil) // TODO: Pagination.
@@ -299,7 +314,10 @@ func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, op
 }
 
 func (s service) CreateComment(_ context.Context, rs issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
-	repo := ghRepoSpec(rs)
+	repo, err := ghRepoSpec(rs)
+	if err != nil {
+		return issues.Comment{}, err
+	}
 	comment, _, err := s.cl.Issues.CreateComment(repo.Owner, repo.Repo, int(id), &github.IssueComment{
 		Body: &c.Body,
 	})
@@ -317,7 +335,10 @@ func (s service) CreateComment(_ context.Context, rs issues.RepoSpec, id uint64,
 }
 
 func (s service) Create(_ context.Context, rs issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
-	repo := ghRepoSpec(rs)
+	repo, err := ghRepoSpec(rs)
+	if err != nil {
+		return issues.Issue{}, err
+	}
 	issue, _, err := s.cl.Issues.Create(repo.Owner, repo.Repo, &github.IssueRequest{
 		Title: &i.Title,
 		Body:  &i.Body,
@@ -344,7 +365,10 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 	if err := ir.Validate(); err != nil {
 		return issues.Issue{}, nil, err
 	}
-	repo := ghRepoSpec(rs)
+	repo, err := ghRepoSpec(rs)
+	if err != nil {
+		return issues.Issue{}, nil, err
+	}
 
 	ghIR := github.IssueRequest{
 		Title: ir.Title,
@@ -404,7 +428,10 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 	if _, err := cr.Validate(); err != nil {
 		return issues.Comment{}, err
 	}
-	repo := ghRepoSpec(rs)
+	repo, err := ghRepoSpec(rs)
+	if err != nil {
+		return issues.Comment{}, err
+	}
 
 	if cr.ID == issueDescriptionCommentID {
 		var comment issues.Comment
@@ -510,15 +537,19 @@ type repoSpec struct {
 	Repo  string
 }
 
-func ghRepoSpec(repo issues.RepoSpec) repoSpec {
-	ownerRepo := strings.Split(repo.URI, "/")
-	if len(ownerRepo) != 2 {
-		panic(fmt.Errorf(`RepoSpec is not of form "owner/repo": %v`, repo))
+func ghRepoSpec(repo issues.RepoSpec) (repoSpec, error) {
+	// TODO, THINK: Include "github.com/" prefix or not?
+	//              So far I'm leaning towards "yes", because it's more definitive and matches
+	//              local uris that also include host. This way, the host can be checked as part of
+	//              request, rather than kept implicit.
+	ghOwnerRepo := strings.Split(repo.URI, "/")
+	if len(ghOwnerRepo) != 3 || ghOwnerRepo[0] != "github.com" || ghOwnerRepo[1] == "" || ghOwnerRepo[2] == "" {
+		return repoSpec{}, fmt.Errorf(`RepoSpec is not of form "github.com/owner/repo": %q`, repo.URI)
 	}
 	return repoSpec{
-		Owner: ownerRepo[0],
-		Repo:  ownerRepo[1],
-	}
+		Owner: ghOwnerRepo[1],
+		Repo:  ghOwnerRepo[2],
+	}, nil
 }
 
 func ghUser(user *github.User) users.User {
