@@ -1,10 +1,10 @@
 package fs
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/shurcooL/issues"
-	"golang.org/x/net/context"
 )
 
 var _ issues.CopierFrom = service{}

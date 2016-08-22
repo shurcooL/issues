@@ -2,6 +2,7 @@
 package asanaapi
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
 	"github.com/tambet/go-asana/asana"
-	"golang.org/x/net/context"
 )
 
 // NewService creates a Asana-backed issues.Service using given Asana client.

@@ -2,6 +2,7 @@
 package issues
 
 import (
+	"context"
 	"fmt"
 	"image/color"
 	"strings"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
-	"golang.org/x/net/context"
 )
 
 // RepoSpec is a specification for a repository.

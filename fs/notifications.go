@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"time"
@@ -8,7 +9,6 @@ import (
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/notifications"
 	"github.com/shurcooL/users"
-	"golang.org/x/net/context"
 )
 
 // THINK: Is having an appID namespace neccessary? A good idea? Or is it better/doable without?

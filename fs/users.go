@@ -1,10 +1,10 @@
 package fs
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/shurcooL/users"
-	"golang.org/x/net/context"
 )
 
 func (s service) user(ctx context.Context, user users.UserSpec) users.User {

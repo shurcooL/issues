@@ -1,9 +1,10 @@
 package githubapi
 
 import (
+	"context"
+
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/notifications"
-	"golang.org/x/net/context"
 )
 
 // markRead marks the specified issue as read for current user.
