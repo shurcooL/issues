@@ -11,8 +11,11 @@ import (
 	"github.com/shurcooL/users"
 )
 
-// THINK: Is having an appID namespace neccessary? A good idea? Or is it better/doable without?
-const appID = "issues"
+// threadType is the notifications thread type for this service.
+const threadType = "issues"
+
+// ThreadType returns the notifications thread type for this service.
+func (service) ThreadType() string { return threadType }
 
 // subscribe subscribes user and anyone mentioned in body to the issue.
 func (s service) subscribe(ctx context.Context, repo issues.RepoSpec, issueID uint64, user users.UserSpec, body string) error {
@@ -29,7 +32,7 @@ func (s service) subscribe(ctx context.Context, repo issues.RepoSpec, issueID ui
 	}
 	subscribers = append(subscribers, mentions...)*/
 
-	return s.notifications.Subscribe(ctx, appID, notifications.RepoSpec{URI: repo.URI}, issueID, subscribers)
+	return s.notifications.Subscribe(ctx, threadType, notifications.RepoSpec{URI: repo.URI}, issueID, subscribers)
 }
 
 // markRead marks the specified issue as read for current user.
@@ -38,7 +41,7 @@ func (s service) markRead(ctx context.Context, repo issues.RepoSpec, issueID uin
 		return nil
 	}
 
-	return s.notifications.MarkRead(ctx, appID, notifications.RepoSpec{URI: repo.URI}, issueID)
+	return s.notifications.MarkRead(ctx, threadType, notifications.RepoSpec{URI: repo.URI}, issueID)
 }
 
 // notify notifies all subscribed users of an update that shows up in their Notification Center.
@@ -71,7 +74,7 @@ func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint6
 		HTMLURL:   htmlURL,
 	}
 
-	return s.notifications.Notify(ctx, appID, notifications.RepoSpec{URI: repo.URI}, issueID, nr)
+	return s.notifications.Notify(ctx, threadType, notifications.RepoSpec{URI: repo.URI}, issueID, nr)
 }
 
 // TODO: This is display/presentation logic; try to factor it out of the backend service implementation.
