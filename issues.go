@@ -113,9 +113,16 @@ type Comment struct {
 	ID        uint64
 	User      users.User
 	CreatedAt time.Time
+	Edited    *Edited // Edited is nil if the comment hasn't been edited.
 	Body      string
 	Reactions []reactions.Reaction
 	Editable  bool // Editable represents whether the current user (if any) can perform edit operations on this comment (or the encompassing issue).
+}
+
+// Edited provides the actor and timing information for an edited item.
+type Edited struct {
+	By users.User
+	At time.Time
 }
 
 // IssueRequest is a request to edit an issue.

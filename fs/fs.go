@@ -154,6 +154,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		}
 	}
 
+	// TODO: Eliminate comment body properties from issues.Issue. It's missing increasingly more fields, like Edited, etc.
 	return issues.Issue{
 		ID:    id,
 		State: issue.State,
@@ -188,6 +189,13 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 		}
 
 		author := comment.Author.UserSpec()
+		var edited *issues.Edited
+		if ed := comment.Edited; ed != nil {
+			edited = &issues.Edited{
+				By: s.user(ctx, ed.By.UserSpec()),
+				At: ed.At,
+			}
+		}
 		var rs []reactions.Reaction
 		for _, cr := range comment.Reactions {
 			reaction := reactions.Reaction{
@@ -204,6 +212,7 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			ID:        fi.ID,
 			User:      s.user(ctx, author),
 			CreatedAt: comment.CreatedAt,
+			Edited:    edited,
 			Body:      comment.Body,
 			Reactions: rs,
 			Editable:  nil == canEdit(ctx, currentUser, comment.Author),
@@ -568,10 +577,15 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 		author := issue.Author.UserSpec()
 		actor := currentUser.UserSpec
+		editedAt := time.Now().UTC()
 
 		// Apply edits.
 		if cr.Body != nil {
 			issue.Body = *cr.Body
+			issue.Edited = &edited{
+				By: fromUserSpec(actor),
+				At: editedAt,
+			}
 		}
 		if cr.Reaction != nil {
 			err := toggleReaction(&issue.comment, currentUser.UserSpec, *cr.Reaction)
@@ -640,10 +654,15 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 	author := comment.Author.UserSpec()
 	actor := currentUser.UserSpec
+	editedAt := time.Now().UTC()
 
 	// Apply edits.
 	if cr.Body != nil {
 		comment.Body = *cr.Body
+		comment.Edited = &edited{
+			By: fromUserSpec(actor),
+			At: editedAt,
+		}
 	}
 	if cr.Reaction != nil {
 		err := toggleReaction(&comment, currentUser.UserSpec, *cr.Reaction)

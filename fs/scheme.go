@@ -61,8 +61,14 @@ type label struct {
 type comment struct {
 	Author    userSpec
 	CreatedAt time.Time
+	Edited    *edited `json:",omitempty"`
 	Body      string
 	Reactions []reaction `json:",omitempty"`
+}
+
+type edited struct {
+	By userSpec
+	At time.Time
 }
 
 // reaction is an on-disk representation of reactions.Reaction.

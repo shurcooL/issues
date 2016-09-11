@@ -201,6 +201,7 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 	//              ListComments because it has canEdit inside a for loop.
 	isCollaborator, _, isCollaboratorErr := s.cl.Repositories.IsCollaborator(repo.Owner, repo.Repo, s.currentUser.Login)
 
+	// TODO: Eliminate comment body properties from issues.Issue. It's missing increasingly more fields, like Edited, etc.
 	return issues.Issue{
 		ID:    uint64(*issue.Number),
 		State: issues.State(*issue.State),
@@ -236,10 +237,19 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 	if err != nil {
 		return comments, err
 	}
+	var edited *issues.Edited
+	/* TODO: Get the actual edited information once GitHub API allows it. Can't use issue.UpdatedAt because of false positives, since it includes the entire issue, not just its comment body.
+	if !issue.UpdatedAt.Equal(*issue.CreatedAt) {
+		edited = &issues.Edited{
+			By: users.User{Login: "Someone"}, //ghUser(issue.Actor), // TODO: Get the actual actor once GitHub API allows it.
+			At: *issue.UpdatedAt,
+		}
+	}*/
 	comments = append(comments, issues.Comment{
 		ID:        issueDescriptionCommentID,
 		User:      ghUser(issue.User),
 		CreatedAt: *issue.CreatedAt,
+		Edited:    edited,
 		Body:      *issue.Body,
 		Reactions: reactions,
 		Editable:  nil == s.canEdit(isCollaborator, isCollaboratorErr, *issue.User.ID),
@@ -260,10 +270,18 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 			if err != nil {
 				return comments, err
 			}
+			var edited *issues.Edited
+			if !comment.UpdatedAt.Equal(*comment.CreatedAt) {
+				edited = &issues.Edited{
+					By: users.User{Login: "Someone"}, //ghUser(comment.Actor), // TODO: Get the actual actor once GitHub API allows it.
+					At: *comment.UpdatedAt,
+				}
+			}
 			comments = append(comments, issues.Comment{
 				ID:        uint64(*comment.ID),
 				User:      ghUser(comment.User),
 				CreatedAt: *comment.CreatedAt,
+				Edited:    edited,
 				Body:      *comment.Body,
 				Reactions: reactions,
 				Editable:  nil == s.canEdit(isCollaborator, isCollaboratorErr, *comment.User.ID),
