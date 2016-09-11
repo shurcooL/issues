@@ -12,7 +12,8 @@ type Event struct {
 	Actor     users.User
 	CreatedAt time.Time
 	Type      EventType
-	Rename    *Rename
+	Rename    *Rename // Rename is only provided for Renamed events.
+	Label     *Label  // Label is only provided for Labeled and Unlabeled events.
 }
 
 // EventType is the type of an event.
@@ -25,12 +26,16 @@ const (
 	Closed EventType = "closed"
 	// Renamed is when an issue is renamed.
 	Renamed EventType = "renamed"
+	// Labeled is when an issue is labeled.
+	Labeled EventType = "labeled"
+	// Unlabeled is when an issue is unlabeled.
+	Unlabeled EventType = "unlabeled"
 )
 
 // Valid returns non-nil error if the event type is invalid.
 func (et EventType) Valid() bool {
 	switch et {
-	case Reopened, Closed, Renamed:
+	case Reopened, Closed, Renamed, Labeled, Unlabeled:
 		return true
 	default:
 		return false

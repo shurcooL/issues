@@ -77,6 +77,7 @@ type event struct {
 	CreatedAt time.Time
 	Type      issues.EventType
 	Rename    *issues.Rename `json:",omitempty"`
+	Label     *label         `json:",omitempty"`
 }
 
 // Tree layout:

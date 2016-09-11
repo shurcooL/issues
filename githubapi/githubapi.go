@@ -306,6 +306,11 @@ func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, op
 				From: *event.Rename.From,
 				To:   *event.Rename.To,
 			}
+		case issues.Labeled, issues.Unlabeled:
+			e.Label = &issues.Label{
+				Name:  *event.Label.Name,
+				Color: ghColor(*event.Label.Color),
+			}
 		}
 		events = append(events, e)
 	}

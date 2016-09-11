@@ -230,12 +230,20 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 		}
 
 		actor := event.Actor.UserSpec()
+		var label *issues.Label
+		if l := event.Label; l != nil {
+			label = &issues.Label{
+				Name:  l.Name,
+				Color: l.Color.RGB(),
+			}
+		}
 		events = append(events, issues.Event{
 			ID:        fi.ID,
 			Actor:     s.user(ctx, actor),
 			CreatedAt: event.CreatedAt,
 			Type:      event.Type,
 			Rename:    event.Rename,
+			Label:     label,
 		})
 	}
 
