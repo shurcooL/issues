@@ -262,7 +262,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 			return comments, err
 		}
 		for _, comment := range ghComments {
-			commentReactions, err := s.listIssueCommentReactions(repo.Owner, repo.Repo, int(*comment.ID))
+			commentReactions, err := s.listIssueCommentReactions(repo.Owner, repo.Repo, *comment.ID)
 			if err != nil {
 				return comments, err
 			}
