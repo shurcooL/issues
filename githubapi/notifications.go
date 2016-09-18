@@ -19,5 +19,5 @@ func (s service) markRead(ctx context.Context, repo issues.RepoSpec, id uint64) 
 		return nil
 	}
 
-	return s.notifications.MarkRead(ctx, threadType, notifications.RepoSpec{URI: repo.URI}, id)
+	return s.notifications.MarkRead(ctx, threadType, notifications.RepoSpec(repo), id)
 }

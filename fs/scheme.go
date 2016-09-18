@@ -36,11 +36,11 @@ type rgb struct {
 }
 
 func fromRGB(c issues.RGB) rgb {
-	return rgb{R: c.R, G: c.G, B: c.B}
+	return rgb(c)
 }
 
 func (c rgb) RGB() issues.RGB {
-	return issues.RGB{R: c.R, G: c.G, B: c.B}
+	return issues.RGB(c)
 }
 
 // issue is an on-disk representation of issues.Issue.
