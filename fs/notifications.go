@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html/template"
+	"strings"
 	"time"
 
 	"github.com/shurcooL/issues"
@@ -59,7 +60,19 @@ func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint6
 	}
 
 	// THINK: Where should the logic to come up with the URL live? It's kinda related to the router/URL scheme of issuesapp...
-	htmlURL := template.URL(fmt.Sprintf("https://%s/%v", repo.URI, issueID))
+	var htmlURL template.URL
+	switch {
+	default:
+		htmlURL = template.URL(fmt.Sprintf("https://%s/%v", repo.URI, issueID))
+
+	// TODO: Find a good way to factor out this logic and provide it to issues/fs in a reasonable way.
+	case repo.URI == "dmitri.shuralyov.com/blog":
+		htmlURL = template.URL(fmt.Sprintf("https://dmitri.shuralyov.com/blog/%v", issueID))
+	case strings.HasPrefix(repo.URI, "dmitri.shuralyov.com/") ||
+		strings.HasPrefix(repo.URI, "github.com/shurcooL/"):
+
+		htmlURL = template.URL(fmt.Sprintf("https://dmitri.shuralyov.com/issues/%s/%v", repo.URI, issueID))
+	}
 	if fragment != "" {
 		htmlURL += template.URL("#" + fragment)
 	}
