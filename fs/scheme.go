@@ -1,15 +1,14 @@
 package fs
 
 import (
-	"os"
+	"fmt"
 	"path"
-	"path/filepath"
 	"time"
 
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
-	"golang.org/x/net/webdav"
+	"github.com/shurcooL/webdavfs/vfsutil"
 )
 
 // userSpec is an on-disk representation of users.UserSpec.
@@ -103,37 +102,34 @@ type event struct {
 // 	                ├── 0
 // 	                └── events
 
-const (
-	// issuesDir is '/'-separated path for issue storage.
-	issuesDir = "issues"
+func (s service) createNamespace(repo issues.RepoSpec) error {
+	if path.Clean("/"+repo.URI) != "/"+repo.URI {
+		return fmt.Errorf("invalid repo.URI (not clean): %q", repo.URI)
+	}
 
-	// eventsDir is dir name for issue events.
-	eventsDir = "events"
-)
-
-// TODO: Merge this path segment into issuesDir, etc.
-func (s service) namespace(repoURI string) webdav.FileSystem {
-	return webdav.Dir(filepath.Join(s.root, filepath.FromSlash(repoURI)))
-}
-func (s service) createNamespace(repoURI string) error {
 	// Only needed for first issue in the repo.
-	// TODO: Make this better, use vfsutil.MkdirAll(fs webdav.FileSystem, ...).
-	//       Consider implicit dir adapter?
-	return os.MkdirAll(filepath.Join(s.root, filepath.FromSlash(repoURI), issuesDir), 0755)
+	// THINK: Consider implicit dir adapter?
+	return vfsutil.MkdirAll(s.fs, issuesDir(repo), 0755)
 }
 
-func issueDir(issueID uint64) string {
-	return path.Join(issuesDir, formatUint64(issueID))
+// issuesDir is '/'-separated path to issue storage dir.
+func issuesDir(repo issues.RepoSpec) string {
+	return path.Join(repo.URI, "issues")
 }
 
-func issueCommentPath(issueID, commentID uint64) string {
-	return path.Join(issuesDir, formatUint64(issueID), formatUint64(commentID))
+func issueDir(repo issues.RepoSpec, issueID uint64) string {
+	return path.Join(repo.URI, "issues", formatUint64(issueID))
 }
 
-func issueEventsDir(issueID uint64) string {
-	return path.Join(issuesDir, formatUint64(issueID), eventsDir)
+func issueCommentPath(repo issues.RepoSpec, issueID, commentID uint64) string {
+	return path.Join(repo.URI, "issues", formatUint64(issueID), formatUint64(commentID))
 }
 
-func issueEventPath(issueID, eventID uint64) string {
-	return path.Join(issuesDir, formatUint64(issueID), eventsDir, formatUint64(eventID))
+// issueEventsDir is '/'-separated path to issue events dir.
+func issueEventsDir(repo issues.RepoSpec, issueID uint64) string {
+	return path.Join(repo.URI, "issues", formatUint64(issueID), "events")
+}
+
+func issueEventPath(repo issues.RepoSpec, issueID, eventID uint64) string {
+	return path.Join(repo.URI, "issues", formatUint64(issueID), "events", formatUint64(eventID))
 }

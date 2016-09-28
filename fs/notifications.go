@@ -52,9 +52,8 @@ func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint6
 
 	// TODO, THINK: Is this the best place/time?
 	// Get issue from storage for to populate notification fields.
-	fs := s.namespace(repo.URI)
 	var issue issue
-	err := jsonDecodeFile(fs, issueCommentPath(issueID, 0), &issue)
+	err := jsonDecodeFile(s.fs, issueCommentPath(repo, issueID, 0), &issue)
 	if err != nil {
 		return err
 	}

@@ -17,29 +17,18 @@ import (
 	"golang.org/x/net/webdav"
 )
 
-// TODO: Use webdav.FileSystem input?
-//       Like this:
-//
-//       	// NewService creates a virtual filesystem-backed issues.Service using root for storage.
-//       	func NewService(root webdav.FileSystem, users users.Service) (issues.Service, error) {
-//
-// NewService creates a filesystem-backed issues.Service rooted at rootDir,
-// which must already exist. It uses notifications service, if not nil.
-func NewService(rootDir string, notifications notifications.ExternalService, users users.Service) (issues.Service, error) {
+// NewService creates a virtual filesystem-backed issues.Service using root for storage.
+// It uses notifications service, if not nil.
+func NewService(root webdav.FileSystem, notifications notifications.ExternalService, users users.Service) (issues.Service, error) {
 	return service{
-		//fs:  root,
-		root:          rootDir,
+		fs:            root,
 		notifications: notifications,
 		users:         users,
 	}, nil
 }
 
 type service struct {
-	// TODO: Use this instead of root string?
-	//fs webdav.FileSystem
-
-	// root directory for issue storage for all repos.
-	root string
+	fs webdav.FileSystem
 
 	// notifications may be nil if there's no notifications service.
 	notifications notifications.ExternalService
@@ -48,11 +37,9 @@ type service struct {
 }
 
 func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
-	fs := s.namespace(repo.URI)
-
 	var is []issues.Issue
 
-	dirs, err := readDirIDs(fs, issuesDir)
+	dirs, err := readDirIDs(s.fs, issuesDir(repo))
 	if err != nil {
 		return is, err
 	}
@@ -63,7 +50,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 		}
 
 		var issue issue
-		err = jsonDecodeFile(fs, issueCommentPath(dir.ID, 0), &issue)
+		err = jsonDecodeFile(s.fs, issueCommentPath(repo, dir.ID, 0), &issue)
 		if err != nil {
 			return is, err
 		}
@@ -72,7 +59,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 			continue
 		}
 
-		comments, err := readDirIDs(fs, issueDir(dir.ID)) // Count comments.
+		comments, err := readDirIDs(s.fs, issueDir(repo, dir.ID)) // Count comments.
 		if err != nil {
 			return is, err
 		}
@@ -101,11 +88,9 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 }
 
 func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
-	fs := s.namespace(repo.URI)
-
 	var count uint64
 
-	dirs, err := readDirIDs(fs, issuesDir)
+	dirs, err := readDirIDs(s.fs, issuesDir(repo))
 	if err != nil {
 		return 0, err
 	}
@@ -115,7 +100,7 @@ func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.Iss
 		}
 
 		var issue issue
-		err = jsonDecodeFile(fs, issueCommentPath(dir.ID, 0), &issue)
+		err = jsonDecodeFile(s.fs, issueCommentPath(repo, dir.ID, 0), &issue)
 		if err != nil {
 			return 0, err
 		}
@@ -136,10 +121,8 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		return issues.Issue{}, err
 	}
 
-	fs := s.namespace(repo.URI)
-
 	var issue issue
-	err = jsonDecodeFile(fs, issueCommentPath(id, 0), &issue)
+	err = jsonDecodeFile(s.fs, issueCommentPath(repo, id, 0), &issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -173,17 +156,15 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 		return nil, err
 	}
 
-	fs := s.namespace(repo.URI)
-
 	var comments []issues.Comment
 
-	fis, err := readDirIDs(fs, issueDir(id))
+	fis, err := readDirIDs(s.fs, issueDir(repo, id))
 	if err != nil {
 		return comments, err
 	}
 	for _, fi := range fis {
 		var comment comment
-		err = jsonDecodeFile(fs, issueCommentPath(id, fi.ID), &comment)
+		err = jsonDecodeFile(s.fs, issueCommentPath(repo, id, fi.ID), &comment)
 		if err != nil {
 			return comments, err
 		}
@@ -223,17 +204,15 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 }
 
 func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
-	fs := s.namespace(repo.URI)
-
 	var events []issues.Event
 
-	fis, err := readDirIDs(fs, issueEventsDir(id))
+	fis, err := readDirIDs(s.fs, issueEventsDir(repo, id))
 	if err != nil {
 		return events, err
 	}
 	for _, fi := range fis {
 		var event event
-		err = jsonDecodeFile(fs, issueEventPath(id, fi.ID), &event)
+		err = jsonDecodeFile(s.fs, issueEventPath(repo, id, fi.ID), &event)
 		if err != nil {
 			return events, err
 		}
@@ -273,8 +252,6 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 		return issues.Comment{}, err
 	}
 
-	fs := s.namespace(repo.URI)
-
 	comment := comment{
 		Author:    fromUserSpec(currentUser.UserSpec),
 		CreatedAt: time.Now().UTC(),
@@ -284,11 +261,11 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 	author := comment.Author.UserSpec()
 
 	// Commit to storage.
-	commentID, err := nextID(fs, issueDir(id))
+	commentID, err := nextID(s.fs, issueDir(repo, id))
 	if err != nil {
 		return issues.Comment{}, err
 	}
-	err = jsonEncodeFile(fs, issueCommentPath(id, commentID), comment)
+	err = jsonEncodeFile(s.fs, issueCommentPath(repo, id, commentID), comment)
 	if err != nil {
 		return issues.Comment{}, err
 	}
@@ -329,10 +306,9 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		return issues.Issue{}, err
 	}
 
-	if err := s.createNamespace(repo.URI); err != nil {
+	if err := s.createNamespace(repo); err != nil {
 		return issues.Issue{}, err
 	}
-	fs := s.namespace(repo.URI)
 
 	issue := issue{
 		State: issues.OpenState,
@@ -347,19 +323,19 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	author := issue.Author.UserSpec()
 
 	// Commit to storage.
-	issueID, err := nextID(fs, issuesDir)
+	issueID, err := nextID(s.fs, issuesDir(repo))
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	err = fs.Mkdir(issueDir(issueID), 0755)
+	err = s.fs.Mkdir(issueDir(repo, issueID), 0755)
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	err = fs.Mkdir(issueEventsDir(issueID), 0755)
+	err = s.fs.Mkdir(issueEventsDir(repo, issueID), 0755)
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	err = jsonEncodeFile(fs, issueCommentPath(issueID, 0), issue)
+	err = jsonEncodeFile(s.fs, issueCommentPath(repo, issueID, 0), issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -433,11 +409,9 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		return issues.Issue{}, nil, err
 	}
 
-	fs := s.namespace(repo.URI)
-
 	// Get from storage.
 	var issue issue
-	err = jsonDecodeFile(fs, issueCommentPath(id, 0), &issue)
+	err = jsonDecodeFile(s.fs, issueCommentPath(repo, id, 0), &issue)
 	if err != nil {
 		return issues.Issue{}, nil, err
 	}
@@ -462,7 +436,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 
 	// Commit to storage.
-	err = jsonEncodeFile(fs, issueCommentPath(id, 0), issue)
+	err = jsonEncodeFile(s.fs, issueCommentPath(repo, id, 0), issue)
 	if err != nil {
 		return issues.Issue{}, nil, err
 	}
@@ -491,11 +465,11 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 	var events []issues.Event
 	if event.Type != "" {
-		eventID, err := nextID(fs, issueEventsDir(id))
+		eventID, err := nextID(s.fs, issueEventsDir(repo, id))
 		if err != nil {
 			return issues.Issue{}, nil, err
 		}
-		err = jsonEncodeFile(fs, issueEventPath(id, eventID), event)
+		err = jsonEncodeFile(s.fs, issueEventPath(repo, id, eventID), event)
 		if err != nil {
 			return issues.Issue{}, nil, err
 		}
@@ -551,13 +525,11 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		return issues.Comment{}, err
 	}
 
-	fs := s.namespace(repo.URI)
-
 	// TODO: Merge these 2 cases (first comment aka issue vs reply comments) into one.
 	if cr.ID == 0 {
 		// Get from storage.
 		var issue issue
-		err := jsonDecodeFile(fs, issueCommentPath(id, 0), &issue)
+		err := jsonDecodeFile(s.fs, issueCommentPath(repo, id, 0), &issue)
 		if err != nil {
 			return issues.Comment{}, err
 		}
@@ -595,7 +567,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		}
 
 		// Commit to storage.
-		err = jsonEncodeFile(fs, issueCommentPath(id, 0), issue)
+		err = jsonEncodeFile(s.fs, issueCommentPath(repo, id, 0), issue)
 		if err != nil {
 			return issues.Comment{}, err
 		}
@@ -634,7 +606,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 	// Get from storage.
 	var comment comment
-	err = jsonDecodeFile(fs, issueCommentPath(id, cr.ID), &comment)
+	err = jsonDecodeFile(s.fs, issueCommentPath(repo, id, cr.ID), &comment)
 	if err != nil {
 		return issues.Comment{}, err
 	}
@@ -672,7 +644,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	}
 
 	// Commit to storage.
-	err = jsonEncodeFile(fs, issueCommentPath(id, cr.ID), comment)
+	err = jsonEncodeFile(s.fs, issueCommentPath(repo, id, cr.ID), comment)
 	if err != nil {
 		return issues.Comment{}, err
 	}

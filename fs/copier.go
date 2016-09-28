@@ -10,10 +10,9 @@ import (
 var _ issues.CopierFrom = service{}
 
 func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.RepoSpec) error {
-	if err := s.createNamespace(repo.URI); err != nil {
+	if err := s.createNamespace(repo); err != nil {
 		return err
 	}
-	fs := s.namespace(repo.URI)
 
 	is, err := src.List(ctx, repo, issues.IssueListOptions{State: issues.AllStates})
 	if err != nil {
@@ -42,11 +41,11 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 		}
 
 		// Put in storage.
-		err = fs.Mkdir(issueDir(i.ID), 0755)
+		err = s.fs.Mkdir(issueDir(repo, i.ID), 0755)
 		if err != nil {
 			return err
 		}
-		err = fs.Mkdir(issueEventsDir(i.ID), 0755)
+		err = s.fs.Mkdir(issueEventsDir(repo, i.ID), 0755)
 		if err != nil {
 			return err
 		}
@@ -78,7 +77,7 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 				issue.comment = comment
 
 				// Put in storage.
-				err = jsonEncodeFile(fs, issueCommentPath(i.ID, 0), issue)
+				err = jsonEncodeFile(s.fs, issueCommentPath(repo, i.ID, 0), issue)
 				if err != nil {
 					return err
 				}
@@ -86,7 +85,7 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 			}
 
 			// Put in storage.
-			err = jsonEncodeFile(fs, issueCommentPath(i.ID, c.ID), comment)
+			err = jsonEncodeFile(s.fs, issueCommentPath(repo, i.ID, c.ID), comment)
 			if err != nil {
 				return err
 			}
@@ -107,7 +106,7 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 			}
 
 			// Put in storage.
-			err = jsonEncodeFile(fs, issueEventPath(i.ID, e.ID), event)
+			err = jsonEncodeFile(s.fs, issueEventPath(repo, i.ID, e.ID), event)
 			if err != nil {
 				return err
 			}
