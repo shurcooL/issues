@@ -49,23 +49,23 @@ func atoi(s string) int64 {
 	return i
 }
 
-func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
+func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
 	var tasks []asana.Task
 	var err error
 	switch opt.State {
 	case issues.StateFilter(issues.OpenState):
-		tasks, err = s.cl.ListProjectTasks(atoi(rs.URI), &asana.Filter{CompletedSince: "now", OptFields: []string{"name", "created_at", "created_by.(name|photo.image_128x128)", "hearts"}})
+		tasks, err = s.cl.ListProjectTasks(ctx, atoi(rs.URI), &asana.Filter{CompletedSince: "now", OptFields: []string{"name", "created_at", "created_by.(name|photo.image_128x128)", "hearts"}})
 		if err != nil {
 			return nil, err
 		}
 	case issues.StateFilter(issues.ClosedState):
 		// TODO: Filter out complete?
-		tasks, err = s.cl.ListProjectTasks(atoi(rs.URI), &asana.Filter{OptFields: []string{"completed", "name", "created_at", "created_by.(name|photo.image_128x128)", "hearts"}})
+		tasks, err = s.cl.ListProjectTasks(ctx, atoi(rs.URI), &asana.Filter{OptFields: []string{"completed", "name", "created_at", "created_by.(name|photo.image_128x128)", "hearts"}})
 		if err != nil {
 			return nil, err
 		}
 	case issues.AllStates:
-		tasks, err = s.cl.ListProjectTasks(atoi(rs.URI), &asana.Filter{OptFields: []string{"completed", "name", "created_at", "created_by.(name|photo.image_128x128)", "hearts"}})
+		tasks, err = s.cl.ListProjectTasks(ctx, atoi(rs.URI), &asana.Filter{OptFields: []string{"completed", "name", "created_at", "created_by.(name|photo.image_128x128)", "hearts"}})
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +110,7 @@ func state(task asana.Task) issues.State {
 }
 
 func (s service) Get(ctx context.Context, _ issues.RepoSpec, id uint64) (issues.Issue, error) {
-	task, err := s.cl.GetTask(int64(id), &asana.Filter{OptFields: []string{"completed", "created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name"}})
+	task, err := s.cl.GetTask(ctx, int64(id), &asana.Filter{OptFields: []string{"completed", "created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name"}})
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -160,7 +160,7 @@ func (s service) ListComments(ctx context.Context, _ issues.RepoSpec, id uint64,
 		isCollaboratorErr error
 	)
 
-	task, err := s.cl.GetTask(int64(id), &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name", "notes"}})
+	task, err := s.cl.GetTask(ctx, int64(id), &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name", "notes"}})
 	if err != nil {
 		return comments, err
 	}
@@ -183,7 +183,7 @@ func (s service) ListComments(ctx context.Context, _ issues.RepoSpec, id uint64,
 		Editable:  nil == s.canEdit(isCollaborator, isCollaboratorErr, task.CreatedBy.ID),
 	})
 
-	stories, err := s.cl.ListTaskStories(int64(id), &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "hearts.user.name", "text", "type"}})
+	stories, err := s.cl.ListTaskStories(ctx, int64(id), &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "hearts.user.name", "text", "type"}})
 	if err != nil {
 		return comments, err
 	}
@@ -215,8 +215,8 @@ func (s service) ListComments(ctx context.Context, _ issues.RepoSpec, id uint64,
 	return comments, nil
 }
 
-func (s service) ListEvents(_ context.Context, _ issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
-	stories, err := s.cl.ListTaskStories(int64(id), &asana.Filter{OptExpand: []string{"created_by"}})
+func (s service) ListEvents(ctx context.Context, _ issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
+	stories, err := s.cl.ListTaskStories(ctx, int64(id), &asana.Filter{OptExpand: []string{"created_by"}})
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +270,7 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 	return issues.Issue{}, nil, fmt.Errorf("Edit: not implemented")
 }
 
-func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
+func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
 	if _, err := cr.Validate(); err != nil {
 		return issues.Comment{}, err
 	}
@@ -288,7 +288,7 @@ func (s service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, c
 			hearted := true // TODO: Figure out the true/false value...
 			tu.Hearted = &hearted
 		}
-		task, err := s.cl.UpdateTask(int64(id), tu, &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name", "notes"}})
+		task, err := s.cl.UpdateTask(ctx, int64(id), tu, &asana.Filter{OptFields: []string{"created_at", "created_by.(name|photo.image_128x128)", "name", "hearts.user.name", "notes"}})
 		if err != nil {
 			return issues.Comment{}, err
 		}
