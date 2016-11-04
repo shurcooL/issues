@@ -41,11 +41,11 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 		}
 
 		// Put in storage.
-		err = s.fs.Mkdir(issueDir(repo, i.ID), 0755)
+		err = s.fs.Mkdir(ctx, issueDir(repo, i.ID), 0755)
 		if err != nil {
 			return err
 		}
-		err = s.fs.Mkdir(issueEventsDir(repo, i.ID), 0755)
+		err = s.fs.Mkdir(ctx, issueEventsDir(repo, i.ID), 0755)
 		if err != nil {
 			return err
 		}

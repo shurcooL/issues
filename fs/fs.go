@@ -327,11 +327,11 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	err = s.fs.Mkdir(issueDir(repo, issueID), 0755)
+	err = s.fs.Mkdir(ctx, issueDir(repo, issueID), 0755)
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	err = s.fs.Mkdir(issueEventsDir(repo, issueID), 0755)
+	err = s.fs.Mkdir(ctx, issueEventsDir(repo, issueID), 0755)
 	if err != nil {
 		return issues.Issue{}, err
 	}
