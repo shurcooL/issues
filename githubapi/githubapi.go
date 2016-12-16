@@ -469,10 +469,19 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 				return issues.Comment{}, err
 			}
 
+			var edited *issues.Edited
+			/* TODO: Get the actual edited information once GitHub API allows it. Can't use issue.UpdatedAt because of false positives, since it includes the entire issue, not just its comment body.
+			if !issue.UpdatedAt.Equal(*issue.CreatedAt) {
+				edited = &issues.Edited{
+					By: users.User{Login: "Someone"}, //ghUser(issue.Actor), // TODO: Get the actual actor once GitHub API allows it.
+					At: *issue.UpdatedAt,
+				}
+			}*/
 			// TODO: Consider setting reactions? But it's semi-expensive (to fetch all user details) and not used by app...
 			comment.ID = issueDescriptionCommentID
 			comment.User = ghUser(issue.User)
 			comment.CreatedAt = *issue.CreatedAt
+			comment.Edited = edited
 			comment.Body = *issue.Body
 			comment.Editable = true // You can always edit comments you've edited.
 		}
@@ -518,10 +527,18 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 			return issues.Comment{}, err
 		}
 
+		var edited *issues.Edited
+		if !ghComment.UpdatedAt.Equal(*ghComment.CreatedAt) {
+			edited = &issues.Edited{
+				By: users.User{Login: "Someone"}, //ghUser(ghComment.Actor), // TODO: Get the actual actor once GitHub API allows it.
+				At: *ghComment.UpdatedAt,
+			}
+		}
 		// TODO: Consider setting reactions? But it's semi-expensive (to fetch all user details) and not used by app...
 		comment.ID = uint64(*ghComment.ID)
 		comment.User = ghUser(ghComment.User)
 		comment.CreatedAt = *ghComment.CreatedAt
+		comment.Edited = edited
 		comment.Body = *ghComment.Body
 		comment.Editable = true // You can always edit comments you've edited.
 	}

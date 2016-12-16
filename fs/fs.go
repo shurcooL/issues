@@ -582,6 +582,13 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 			// TODO: Notify _newly mentioned_ users.
 		}
 
+		var edited *issues.Edited
+		if ed := issue.Edited; ed != nil {
+			edited = &issues.Edited{
+				By: s.user(ctx, ed.By.UserSpec()),
+				At: ed.At,
+			}
+		}
 		var rs []reactions.Reaction
 		for _, cr := range issue.Reactions {
 			reaction := reactions.Reaction{
@@ -598,6 +605,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 			ID:        0,
 			User:      s.user(ctx, author),
 			CreatedAt: issue.CreatedAt,
+			Edited:    edited,
 			Body:      issue.Body,
 			Reactions: rs,
 			Editable:  true, // You can always edit comments you've edited.
@@ -659,6 +667,13 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		// TODO: Notify _newly mentioned_ users.
 	}
 
+	var edited *issues.Edited
+	if ed := comment.Edited; ed != nil {
+		edited = &issues.Edited{
+			By: s.user(ctx, ed.By.UserSpec()),
+			At: ed.At,
+		}
+	}
 	var rs []reactions.Reaction
 	for _, cr := range comment.Reactions {
 		reaction := reactions.Reaction{
@@ -675,6 +690,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		ID:        cr.ID,
 		User:      s.user(ctx, author),
 		CreatedAt: comment.CreatedAt,
+		Edited:    edited,
 		Body:      comment.Body,
 		Reactions: rs,
 		Editable:  true, // You can always edit comments you've edited.
