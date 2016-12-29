@@ -33,9 +33,9 @@ type Service interface {
 	Get(ctx context.Context, repo RepoSpec, id uint64) (Issue, error)
 
 	// ListComments lists comments for specified issue id.
-	ListComments(ctx context.Context, repo RepoSpec, id uint64, opt interface{}) ([]Comment, error)
+	ListComments(ctx context.Context, repo RepoSpec, id uint64, opt *ListOptions) ([]Comment, error)
 	// ListEvents lists events for specified issue id.
-	ListEvents(ctx context.Context, repo RepoSpec, id uint64, opt interface{}) ([]Event, error)
+	ListEvents(ctx context.Context, repo RepoSpec, id uint64, opt *ListOptions) ([]Event, error)
 
 	// Create a new issue.
 	Create(ctx context.Context, repo RepoSpec, issue Issue) (Issue, error)

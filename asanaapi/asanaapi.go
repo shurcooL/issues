@@ -151,7 +151,9 @@ func (s service) canEdit(isCollaborator bool, isCollaboratorErr error, authorID 
 	}
 }
 
-func (s service) ListComments(ctx context.Context, _ issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
+func (s service) ListComments(ctx context.Context, _ issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Comment, error) {
+	// TODO: Pagination. Respect opt.Start and opt.Length, if given.
+
 	var comments []issues.Comment
 
 	// TODO: Figure this out.
@@ -215,7 +217,9 @@ func (s service) ListComments(ctx context.Context, _ issues.RepoSpec, id uint64,
 	return comments, nil
 }
 
-func (s service) ListEvents(ctx context.Context, _ issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
+func (s service) ListEvents(ctx context.Context, _ issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
+	// TODO: Pagination. Respect opt.Start and opt.Length, if given.
+
 	stories, err := s.cl.ListTaskStories(ctx, int64(id), &asana.Filter{OptExpand: []string{"created_by"}})
 	if err != nil {
 		return nil, err

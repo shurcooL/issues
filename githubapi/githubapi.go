@@ -214,7 +214,9 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 	}, nil
 }
 
-func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
+func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Comment, error) {
+	// TODO: Respect opt.Start and opt.Length, if given.
+
 	repo, err := ghRepoSpec(rs)
 	if err != nil {
 		return nil, err
@@ -296,14 +298,16 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 	return comments, nil
 }
 
-func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
+func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
+	// TODO: Pagination. Respect opt.Start and opt.Length, if given.
+
 	repo, err := ghRepoSpec(rs)
 	if err != nil {
 		return nil, err
 	}
 	var events []issues.Event
 
-	ghEvents, _, err := s.cl.Issues.ListIssueEvents(repo.Owner, repo.Repo, int(id), nil) // TODO: Pagination.
+	ghEvents, _, err := s.cl.Issues.ListIssueEvents(repo.Owner, repo.Repo, int(id), nil)
 	if err != nil {
 		return events, err
 	}

@@ -150,7 +150,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 	}, nil
 }
 
-func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Comment, error) {
+func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Comment, error) {
 	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return nil, err
@@ -162,7 +162,7 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 	if err != nil {
 		return comments, err
 	}
-	for _, fi := range fis {
+	for _, fi := range paginate(fis, opt) {
 		var comment comment
 		err = jsonDecodeFile(s.fs, issueCommentPath(repo, id, fi.ID), &comment)
 		if err != nil {
@@ -203,14 +203,14 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 	return comments, nil
 }
 
-func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64, opt interface{}) ([]issues.Event, error) {
+func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
 	var events []issues.Event
 
 	fis, err := readDirIDs(s.fs, issueEventsDir(repo, id))
 	if err != nil {
 		return events, err
 	}
-	for _, fi := range fis {
+	for _, fi := range paginate(fis, opt) {
 		var event event
 		err = jsonDecodeFile(s.fs, issueEventPath(repo, id, fi.ID), &event)
 		if err != nil {
@@ -695,6 +695,21 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		Reactions: rs,
 		Editable:  true, // You can always edit comments you've edited.
 	}, nil
+}
+
+func paginate(fis []fileInfoID, opt *issues.ListOptions) []fileInfoID {
+	if opt == nil {
+		return fis
+	}
+	start := opt.Start
+	if start > len(fis) {
+		start = len(fis)
+	}
+	end := opt.Start + opt.Length
+	if end > len(fis) {
+		end = len(fis)
+	}
+	return fis[start:end]
 }
 
 // toggleReaction toggles reaction emojiID to comment c for specified user u.
