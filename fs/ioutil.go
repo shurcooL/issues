@@ -26,13 +26,10 @@ func (f byID) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 // readDirIDs reads the directory named by path and returns
 // a list of directory entries whose names are IDs of type uint64, sorted by ID.
 // Other entries with names don't match the naming scheme are ignored.
-// If the directory doesn't exist, empty list and no error are returned.
+// If the directory doesn't exist, a not exist error is returned.
 func readDirIDs(fs webdav.FileSystem, path string) ([]fileInfoID, error) {
 	fis, err := vfsutil.ReadDir(fs, path)
 	if err != nil {
-		if os.IsNotExist(err) { // Non-existing dirs are not considered an error.
-			return nil, nil
-		}
 		return nil, err
 	}
 	var fiis []fileInfoID
