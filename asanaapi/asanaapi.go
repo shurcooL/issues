@@ -4,7 +4,6 @@ package asanaapi
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"os"
 	"strconv"
 	"strings"
@@ -329,6 +328,6 @@ func asanaUser(user asana.User) users.User {
 		Login:     user.Name,
 		Name:      user.Name,
 		Email:     user.Email,
-		AvatarURL: template.URL(user.Photo["image_128x128"]),
+		AvatarURL: user.Photo["image_128x128"],
 	}
 }

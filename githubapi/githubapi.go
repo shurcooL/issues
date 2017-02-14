@@ -4,7 +4,6 @@ package githubapi
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -603,8 +602,8 @@ func ghUser(user *github.User) users.User {
 			Domain: "github.com",
 		},
 		Login:     *user.Login,
-		AvatarURL: template.URL(*user.AvatarURL),
-		HTMLURL:   template.URL(*user.HTMLURL),
+		AvatarURL: *user.AvatarURL,
+		HTMLURL:   *user.HTMLURL,
 	}
 }
 
