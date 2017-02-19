@@ -1,6 +1,8 @@
 package githubapi
 
 import (
+	"context"
+
 	"github.com/google/go-github/github"
 	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
@@ -34,11 +36,11 @@ func (s service) reactions(ghReactions []*github.Reaction) ([]reactions.Reaction
 }
 
 // listIssueReactions fetches all pages.
-func (s service) listIssueReactions(owner, repo string, id int) ([]*github.Reaction, error) {
+func (s service) listIssueReactions(ctx context.Context, owner, repo string, id int) ([]*github.Reaction, error) {
 	var issueReactions []*github.Reaction
 	ghOpt := &github.ListOptions{}
 	for {
-		irs, resp, err := s.cl.Reactions.ListIssueReactions(owner, repo, id, ghOpt)
+		irs, resp, err := s.cl.Reactions.ListIssueReactions(ctx, owner, repo, id, ghOpt)
 		if err != nil {
 			return nil, err
 		}
@@ -52,11 +54,11 @@ func (s service) listIssueReactions(owner, repo string, id int) ([]*github.React
 }
 
 // listIssueCommentReactions fetches all pages.
-func (s service) listIssueCommentReactions(owner, repo string, id int) ([]*github.Reaction, error) {
+func (s service) listIssueCommentReactions(ctx context.Context, owner, repo string, id int) ([]*github.Reaction, error) {
 	var commentReactions []*github.Reaction
 	ghOpt := &github.ListOptions{}
 	for {
-		crs, resp, err := s.cl.Reactions.ListIssueCommentReactions(owner, repo, id, ghOpt)
+		crs, resp, err := s.cl.Reactions.ListIssueCommentReactions(ctx, owner, repo, id, ghOpt)
 		if err != nil {
 			return nil, err
 		}

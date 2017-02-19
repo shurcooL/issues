@@ -49,7 +49,7 @@ type service struct {
 // We use 0 as a special ID for the comment that is the issue description. This comment is edited differently.
 const issueDescriptionCommentID uint64 = 0
 
-func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
+func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
 	repo, err := ghRepoSpec(rs)
 	if err != nil {
 		return nil, err
@@ -63,7 +63,7 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 	case issues.AllStates:
 		ghOpt.State = "all"
 	}
-	ghIssuesAndPRs, _, err := s.cl.Issues.ListByRepo(repo.Owner, repo.Repo, &ghOpt)
+	ghIssuesAndPRs, _, err := s.cl.Issues.ListByRepo(ctx, repo.Owner, repo.Repo, &ghOpt)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 	return is, nil
 }
 
-func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
+func (s service) Count(ctx context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
 	repo, err := ghRepoSpec(rs)
 	if err != nil {
 		return 0, err
@@ -121,7 +121,7 @@ func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueLi
 			State:       ghState,
 			ListOptions: github.ListOptions{PerPage: 1},
 		}
-		ghIssuesAndPRs, ghIssuesAndPRsResp, err := s.cl.Issues.ListByRepo(repo.Owner, repo.Repo, &ghOpt)
+		ghIssuesAndPRs, ghIssuesAndPRsResp, err := s.cl.Issues.ListByRepo(ctx, repo.Owner, repo.Repo, &ghOpt)
 		if err != nil {
 			return 0, err
 		}
@@ -138,7 +138,7 @@ func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueLi
 			State:       ghState,
 			ListOptions: github.ListOptions{PerPage: 1},
 		}
-		ghPRs, ghPRsResp, err := s.cl.PullRequests.List(repo.Owner, repo.Repo, &ghOpt)
+		ghPRs, ghPRsResp, err := s.cl.PullRequests.List(ctx, repo.Owner, repo.Repo, &ghOpt)
 		if err != nil {
 			return 0, err
 		}
@@ -180,7 +180,7 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	issue, _, err := s.cl.Issues.Get(repo.Owner, repo.Repo, int(id))
+	issue, _, err := s.cl.Issues.Get(ctx, repo.Owner, repo.Repo, int(id))
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -198,7 +198,7 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 	//
 	//              In here it doesn't matter since Get only calls canEdit once; but it matters for
 	//              ListComments because it has canEdit inside a for loop.
-	isCollaborator, _, isCollaboratorErr := s.cl.Repositories.IsCollaborator(repo.Owner, repo.Repo, s.currentUser.Login)
+	isCollaborator, _, isCollaboratorErr := s.cl.Repositories.IsCollaborator(ctx, repo.Owner, repo.Repo, s.currentUser.Login)
 
 	// TODO: Eliminate comment body properties from issues.Issue. It's missing increasingly more fields, like Edited, etc.
 	return issues.Issue{
@@ -224,13 +224,13 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 
 	// TODO, THINK: Where's the best place for this? It should be inside canEdit, but don't want to
 	//              do it more than 1 per service call. Perhaps store/check inside request context?
-	isCollaborator, _, isCollaboratorErr := s.cl.Repositories.IsCollaborator(repo.Owner, repo.Repo, s.currentUser.Login)
+	isCollaborator, _, isCollaboratorErr := s.cl.Repositories.IsCollaborator(ctx, repo.Owner, repo.Repo, s.currentUser.Login)
 
-	issue, _, err := s.cl.Issues.Get(repo.Owner, repo.Repo, int(id))
+	issue, _, err := s.cl.Issues.Get(ctx, repo.Owner, repo.Repo, int(id))
 	if err != nil {
 		return comments, err
 	}
-	issueReactions, err := s.listIssueReactions(repo.Owner, repo.Repo, int(id))
+	issueReactions, err := s.listIssueReactions(ctx, repo.Owner, repo.Repo, int(id))
 	if err != nil {
 		return comments, err
 	}
@@ -258,12 +258,12 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 
 	ghOpt := &github.IssueListCommentsOptions{}
 	for {
-		ghComments, resp, err := s.cl.Issues.ListComments(repo.Owner, repo.Repo, int(id), ghOpt)
+		ghComments, resp, err := s.cl.Issues.ListComments(ctx, repo.Owner, repo.Repo, int(id), ghOpt)
 		if err != nil {
 			return comments, err
 		}
 		for _, comment := range ghComments {
-			commentReactions, err := s.listIssueCommentReactions(repo.Owner, repo.Repo, *comment.ID)
+			commentReactions, err := s.listIssueCommentReactions(ctx, repo.Owner, repo.Repo, *comment.ID)
 			if err != nil {
 				return comments, err
 			}
@@ -297,7 +297,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 	return comments, nil
 }
 
-func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
+func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
 	// TODO: Pagination. Respect opt.Start and opt.Length, if given.
 
 	repo, err := ghRepoSpec(rs)
@@ -306,7 +306,7 @@ func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, op
 	}
 	var events []issues.Event
 
-	ghEvents, _, err := s.cl.Issues.ListIssueEvents(repo.Owner, repo.Repo, int(id), nil)
+	ghEvents, _, err := s.cl.Issues.ListIssueEvents(ctx, repo.Owner, repo.Repo, int(id), nil)
 	if err != nil {
 		return events, err
 	}
@@ -339,12 +339,12 @@ func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, op
 	return events, nil
 }
 
-func (s service) CreateComment(_ context.Context, rs issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
+func (s service) CreateComment(ctx context.Context, rs issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
 	repo, err := ghRepoSpec(rs)
 	if err != nil {
 		return issues.Comment{}, err
 	}
-	comment, _, err := s.cl.Issues.CreateComment(repo.Owner, repo.Repo, int(id), &github.IssueComment{
+	comment, _, err := s.cl.Issues.CreateComment(ctx, repo.Owner, repo.Repo, int(id), &github.IssueComment{
 		Body: &c.Body,
 	})
 	if err != nil {
@@ -360,12 +360,12 @@ func (s service) CreateComment(_ context.Context, rs issues.RepoSpec, id uint64,
 	}, nil
 }
 
-func (s service) Create(_ context.Context, rs issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
+func (s service) Create(ctx context.Context, rs issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
 	repo, err := ghRepoSpec(rs)
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	issue, _, err := s.cl.Issues.Create(repo.Owner, repo.Repo, &github.IssueRequest{
+	issue, _, err := s.cl.Issues.Create(ctx, repo.Owner, repo.Repo, &github.IssueRequest{
 		Title: &i.Title,
 		Body:  &i.Body,
 	})
@@ -386,7 +386,7 @@ func (s service) Create(_ context.Context, rs issues.RepoSpec, i issues.Issue) (
 	}, nil
 }
 
-func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
+func (s service) Edit(ctx context.Context, rs issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
 	// TODO: Why Validate here but not Create, etc.? Figure this out. Might only be needed in fs implementation.
 	if err := ir.Validate(); err != nil {
 		return issues.Issue{}, nil, err
@@ -404,7 +404,7 @@ func (s service) Edit(_ context.Context, rs issues.RepoSpec, id uint64, ir issue
 		ghIR.State = &state
 	}
 
-	issue, _, err := s.cl.Issues.Edit(repo.Owner, repo.Repo, int(id), &ghIR)
+	issue, _, err := s.cl.Issues.Edit(ctx, repo.Owner, repo.Repo, int(id), &ghIR)
 	if err != nil {
 		return issues.Issue{}, nil, err
 	}
@@ -465,7 +465,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 		// Apply edits.
 		if cr.Body != nil {
 			// Use Issues.Edit() API to edit comment 0 (the issue description).
-			issue, _, err := s.cl.Issues.Edit(repo.Owner, repo.Repo, int(id), &github.IssueRequest{
+			issue, _, err := s.cl.Issues.Edit(ctx, repo.Owner, repo.Repo, int(id), &github.IssueRequest{
 				Body: cr.Body,
 			})
 			if err != nil {
@@ -490,19 +490,19 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 		}
 		if cr.Reaction != nil {
 			// Toggle reaction by trying to create it, and if it already existed, then remove it.
-			reaction, resp, err := s.cl.Reactions.CreateIssueReaction(repo.Owner, repo.Repo, int(id), externalizeReaction(*cr.Reaction))
+			reaction, resp, err := s.cl.Reactions.CreateIssueReaction(ctx, repo.Owner, repo.Repo, int(id), externalizeReaction(*cr.Reaction))
 			if err != nil {
 				return issues.Comment{}, err
 			}
 			if resp.StatusCode == http.StatusOK {
 				// If we got 200 instead of 201, we should be removing the reaction instead.
-				_, err := s.cl.Reactions.DeleteReaction(*reaction.ID)
+				_, err := s.cl.Reactions.DeleteReaction(ctx, *reaction.ID)
 				if err != nil {
 					return issues.Comment{}, err
 				}
 			}
 
-			issueReactions, err := s.listIssueReactions(repo.Owner, repo.Repo, int(id))
+			issueReactions, err := s.listIssueReactions(ctx, repo.Owner, repo.Repo, int(id))
 			if err != nil {
 				return issues.Comment{}, err
 			}
@@ -523,7 +523,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 	// Apply edits.
 	if cr.Body != nil {
 		// GitHub API uses comment ID and doesn't need issue ID. Comment IDs are unique per repo (rather than per issue).
-		ghComment, _, err := s.cl.Issues.EditComment(repo.Owner, repo.Repo, int(cr.ID), &github.IssueComment{
+		ghComment, _, err := s.cl.Issues.EditComment(ctx, repo.Owner, repo.Repo, int(cr.ID), &github.IssueComment{
 			Body: cr.Body,
 		})
 		if err != nil {
@@ -547,19 +547,19 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 	}
 	if cr.Reaction != nil {
 		// Toggle reaction by trying to create it, and if it already existed, then remove it.
-		reaction, resp, err := s.cl.Reactions.CreateIssueCommentReaction(repo.Owner, repo.Repo, int(cr.ID), externalizeReaction(*cr.Reaction))
+		reaction, resp, err := s.cl.Reactions.CreateIssueCommentReaction(ctx, repo.Owner, repo.Repo, int(cr.ID), externalizeReaction(*cr.Reaction))
 		if err != nil {
 			return issues.Comment{}, err
 		}
 		if resp.StatusCode == http.StatusOK {
 			// If we got 200 instead of 201, we should be removing the reaction instead.
-			_, err := s.cl.Reactions.DeleteReaction(*reaction.ID)
+			_, err := s.cl.Reactions.DeleteReaction(ctx, *reaction.ID)
 			if err != nil {
 				return issues.Comment{}, err
 			}
 		}
 
-		commentReactions, err := s.listIssueCommentReactions(repo.Owner, repo.Repo, int(cr.ID))
+		commentReactions, err := s.listIssueCommentReactions(ctx, repo.Owner, repo.Repo, int(cr.ID))
 		if err != nil {
 			return issues.Comment{}, err
 		}
