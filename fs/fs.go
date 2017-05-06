@@ -442,10 +442,9 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 
 	// Create event and commit to storage.
-	createdAt := time.Now().UTC()
 	event := event{
 		Actor:     fromUserSpec(actor),
-		CreatedAt: createdAt,
+		CreatedAt: time.Now().UTC(),
 	}
 	// TODO: A single edit operation can result in multiple events, we should emit multiple events in such cases. We're currently emitting at most one event.
 	switch {
@@ -492,7 +491,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 		// Notify subscribed users.
 		// TODO: Maybe set fragment to fmt.Sprintf("event-%d", eventID), etc.
-		err = s.notify(ctx, repo, id, "", actor, createdAt)
+		err = s.notify(ctx, repo, id, "", actor, event.CreatedAt)
 		if err != nil {
 			log.Println("service.Edit: failed to s.notify:", err)
 		}

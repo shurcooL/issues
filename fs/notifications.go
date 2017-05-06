@@ -45,7 +45,7 @@ func (s service) markRead(ctx context.Context, repo issues.RepoSpec, issueID uin
 }
 
 // notify notifies all subscribed users of an update that shows up in their Notification Center.
-func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint64, fragment string, actor users.UserSpec, createdAt time.Time) error {
+func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint64, fragment string, actor users.UserSpec, time time.Time) error {
 	if s.notifications == nil {
 		return nil
 	}
@@ -58,34 +58,38 @@ func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint6
 		return err
 	}
 
-	// THINK: Where should the logic to come up with the URL live? It's kinda related to the router/URL scheme of issuesapp...
-	var htmlURL string
-	switch {
-	default:
-		htmlURL = fmt.Sprintf("https://%s/%v", repo.URI, issueID)
-
-	// TODO: Find a good way to factor out this logic and provide it to issues/fs in a reasonable way.
-	case repo.URI == "dmitri.shuralyov.com/blog":
-		htmlURL = fmt.Sprintf("https://dmitri.shuralyov.com/blog/%v", issueID)
-	case strings.HasPrefix(repo.URI, "dmitri.shuralyov.com/") ||
-		strings.HasPrefix(repo.URI, "github.com/shurcooL/"):
-
-		htmlURL = fmt.Sprintf("https://dmitri.shuralyov.com/issues/%s/%v", repo.URI, issueID)
-	}
-	if fragment != "" {
-		htmlURL += "#" + fragment
-	}
-
 	nr := notifications.NotificationRequest{
 		Title:     issue.Title,
 		Icon:      notificationIcon(issue.State),
 		Color:     notificationColor(issue.State),
 		Actor:     actor,
-		UpdatedAt: createdAt,
-		HTMLURL:   htmlURL,
+		UpdatedAt: time,
+		HTMLURL:   htmlURL(repo.URI, issueID, fragment),
 	}
 
 	return s.notifications.Notify(ctx, threadType, notifications.RepoSpec(repo), issueID, nr)
+}
+
+// TODO, THINK: Where should the logic to come up with the URL live?
+//              It's kinda related to the router/URL scheme of issuesapp...
+func htmlURL(repoURI string, issueID uint64, fragment string) string {
+	var htmlURL string
+	switch {
+	default:
+		htmlURL = fmt.Sprintf("https://%s/%v", repoURI, issueID)
+
+	// TODO: Find a good way to factor out this logic and provide it to issues/fs in a reasonable way.
+	case repoURI == "dmitri.shuralyov.com/blog":
+		htmlURL = fmt.Sprintf("https://dmitri.shuralyov.com/blog/%v", issueID)
+	case strings.HasPrefix(repoURI, "dmitri.shuralyov.com/") ||
+		strings.HasPrefix(repoURI, "github.com/shurcooL/"):
+
+		htmlURL = fmt.Sprintf("https://dmitri.shuralyov.com/issues/%s/%v", repoURI, issueID)
+	}
+	if fragment != "" {
+		htmlURL += "#" + fragment
+	}
+	return htmlURL
 }
 
 // TODO: This is display/presentation logic; try to factor it out of the backend service implementation.
