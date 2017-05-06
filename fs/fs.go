@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shurcooL/events"
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/notifications"
 	"github.com/shurcooL/reactions"
@@ -19,10 +20,11 @@ import (
 
 // NewService creates a virtual filesystem-backed issues.Service using root for storage.
 // It uses notifications service, if not nil.
-func NewService(root webdav.FileSystem, notifications notifications.ExternalService, users users.Service) (issues.Service, error) {
+func NewService(root webdav.FileSystem, notifications notifications.ExternalService, events events.ExternalService, users users.Service) (issues.Service, error) {
 	return service{
 		fs:            root,
 		notifications: notifications,
+		events:        events,
 		users:         users,
 	}, nil
 }
@@ -32,6 +34,8 @@ type service struct {
 
 	// notifications may be nil if there's no notifications service.
 	notifications notifications.ExternalService
+	// events may be nil if there's no events service.
+	events events.ExternalService
 
 	users users.Service
 }
@@ -283,6 +287,13 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 		log.Println("service.CreateComment: failed to s.notify:", err)
 	}
 
+	// Log event.
+	// TODO: Come up with a better way to compute fragment; that logic shouldn't be duplicated here from issuesapp router.
+	err = s.logIssueComment(ctx, repo, id, fmt.Sprintf("comment-%d", commentID), currentUser, comment.CreatedAt, comment.Body)
+	if err != nil {
+		log.Println("service.CreateComment: failed to s.logIssueComment:", err)
+	}
+
 	return issues.Comment{
 		ID:        commentID,
 		User:      s.user(ctx, author),
@@ -350,6 +361,12 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	err = s.notify(ctx, repo, issueID, "", author, issue.CreatedAt)
 	if err != nil {
 		log.Println("service.Create: failed to s.notify:", err)
+	}
+
+	// Log event.
+	err = s.logIssue(ctx, repo, issueID, "", issue, currentUser, "opened", issue.CreatedAt)
+	if err != nil {
+		log.Println("service.Create: failed to s.logIssue:", err)
 	}
 
 	return issues.Issue{
@@ -494,6 +511,13 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		err = s.notify(ctx, repo, id, "", actor, event.CreatedAt)
 		if err != nil {
 			log.Println("service.Edit: failed to s.notify:", err)
+		}
+
+		// Log event.
+		// TODO: Maybe set fragment to fmt.Sprintf("event-%d", eventID), etc.
+		err = s.logIssue(ctx, repo, id, "", issue, currentUser, string(event.Type), event.CreatedAt)
+		if err != nil {
+			log.Println("service.Edit: failed to s.logIssue:", err)
 		}
 	}
 
