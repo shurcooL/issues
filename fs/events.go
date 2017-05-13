@@ -36,7 +36,7 @@ func (s service) logIssueComment(ctx context.Context, repo issues.RepoSpec, issu
 	// TODO, THINK: Is this the best place/time? It's also being done in s.notify...
 	// Get issue from storage for to populate event fields.
 	var issue issue
-	err := jsonDecodeFile(s.fs, issueCommentPath(repo, issueID, 0), &issue)
+	err := jsonDecodeFile(ctx, s.fs, issueCommentPath(repo, issueID, 0), &issue)
 	if err != nil {
 		return err
 	}

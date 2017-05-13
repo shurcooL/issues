@@ -43,7 +43,7 @@ type service struct {
 func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
 	var is []issues.Issue
 
-	dirs, err := readDirIDs(s.fs, issuesDir(repo))
+	dirs, err := readDirIDs(ctx, s.fs, issuesDir(repo))
 	if err != nil {
 		return is, err
 	}
@@ -54,7 +54,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 		}
 
 		var issue issue
-		err = jsonDecodeFile(s.fs, issueCommentPath(repo, dir.ID, 0), &issue)
+		err = jsonDecodeFile(ctx, s.fs, issueCommentPath(repo, dir.ID, 0), &issue)
 		if err != nil {
 			return is, err
 		}
@@ -63,7 +63,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 			continue
 		}
 
-		comments, err := readDirIDs(s.fs, issueDir(repo, dir.ID)) // Count comments.
+		comments, err := readDirIDs(ctx, s.fs, issueDir(repo, dir.ID)) // Count comments.
 		if err != nil {
 			return is, err
 		}
@@ -94,7 +94,7 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
 	var count uint64
 
-	dirs, err := readDirIDs(s.fs, issuesDir(repo))
+	dirs, err := readDirIDs(ctx, s.fs, issuesDir(repo))
 	if err != nil {
 		return 0, err
 	}
@@ -104,7 +104,7 @@ func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.Iss
 		}
 
 		var issue issue
-		err = jsonDecodeFile(s.fs, issueCommentPath(repo, dir.ID, 0), &issue)
+		err = jsonDecodeFile(ctx, s.fs, issueCommentPath(repo, dir.ID, 0), &issue)
 		if err != nil {
 			return 0, err
 		}
@@ -126,7 +126,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 	}
 
 	var issue issue
-	err = jsonDecodeFile(s.fs, issueCommentPath(repo, id, 0), &issue)
+	err = jsonDecodeFile(ctx, s.fs, issueCommentPath(repo, id, 0), &issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -162,13 +162,13 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 
 	var comments []issues.Comment
 
-	fis, err := readDirIDs(s.fs, issueDir(repo, id))
+	fis, err := readDirIDs(ctx, s.fs, issueDir(repo, id))
 	if err != nil {
 		return comments, err
 	}
 	for _, fi := range paginate(fis, opt) {
 		var comment comment
-		err = jsonDecodeFile(s.fs, issueCommentPath(repo, id, fi.ID), &comment)
+		err = jsonDecodeFile(ctx, s.fs, issueCommentPath(repo, id, fi.ID), &comment)
 		if err != nil {
 			return comments, err
 		}
@@ -210,13 +210,13 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
 	var events []issues.Event
 
-	fis, err := readDirIDs(s.fs, issueEventsDir(repo, id))
+	fis, err := readDirIDs(ctx, s.fs, issueEventsDir(repo, id))
 	if err != nil {
 		return events, err
 	}
 	for _, fi := range paginate(fis, opt) {
 		var event event
-		err = jsonDecodeFile(s.fs, issueEventPath(repo, id, fi.ID), &event)
+		err = jsonDecodeFile(ctx, s.fs, issueEventPath(repo, id, fi.ID), &event)
 		if err != nil {
 			return events, err
 		}
@@ -265,11 +265,11 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 	author := comment.Author.UserSpec()
 
 	// Commit to storage.
-	commentID, err := nextID(s.fs, issueDir(repo, id))
+	commentID, err := nextID(ctx, s.fs, issueDir(repo, id))
 	if err != nil {
 		return issues.Comment{}, err
 	}
-	err = jsonEncodeFile(s.fs, issueCommentPath(repo, id, commentID), comment)
+	err = jsonEncodeFile(ctx, s.fs, issueCommentPath(repo, id, commentID), comment)
 	if err != nil {
 		return issues.Comment{}, err
 	}
@@ -317,7 +317,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		return issues.Issue{}, err
 	}
 
-	if err := s.createNamespace(repo); err != nil {
+	if err := s.createNamespace(ctx, repo); err != nil {
 		return issues.Issue{}, err
 	}
 
@@ -334,7 +334,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	author := issue.Author.UserSpec()
 
 	// Commit to storage.
-	issueID, err := nextID(s.fs, issuesDir(repo))
+	issueID, err := nextID(ctx, s.fs, issuesDir(repo))
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -346,7 +346,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	err = jsonEncodeFile(s.fs, issueCommentPath(repo, issueID, 0), issue)
+	err = jsonEncodeFile(ctx, s.fs, issueCommentPath(repo, issueID, 0), issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -428,7 +428,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 
 	// Get from storage.
 	var issue issue
-	err = jsonDecodeFile(s.fs, issueCommentPath(repo, id, 0), &issue)
+	err = jsonDecodeFile(ctx, s.fs, issueCommentPath(repo, id, 0), &issue)
 	if err != nil {
 		return issues.Issue{}, nil, err
 	}
@@ -453,7 +453,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 
 	// Commit to storage.
-	err = jsonEncodeFile(s.fs, issueCommentPath(repo, id, 0), issue)
+	err = jsonEncodeFile(ctx, s.fs, issueCommentPath(repo, id, 0), issue)
 	if err != nil {
 		return issues.Issue{}, nil, err
 	}
@@ -481,11 +481,11 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 	var events []issues.Event
 	if event.Type != "" {
-		eventID, err := nextID(s.fs, issueEventsDir(repo, id))
+		eventID, err := nextID(ctx, s.fs, issueEventsDir(repo, id))
 		if err != nil {
 			return issues.Issue{}, nil, err
 		}
-		err = jsonEncodeFile(s.fs, issueEventPath(repo, id, eventID), event)
+		err = jsonEncodeFile(ctx, s.fs, issueEventPath(repo, id, eventID), event)
 		if err != nil {
 			return issues.Issue{}, nil, err
 		}
@@ -552,7 +552,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	if cr.ID == 0 {
 		// Get from storage.
 		var issue issue
-		err := jsonDecodeFile(s.fs, issueCommentPath(repo, id, 0), &issue)
+		err := jsonDecodeFile(ctx, s.fs, issueCommentPath(repo, id, 0), &issue)
 		if err != nil {
 			return issues.Comment{}, err
 		}
@@ -590,7 +590,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		}
 
 		// Commit to storage.
-		err = jsonEncodeFile(s.fs, issueCommentPath(repo, id, 0), issue)
+		err = jsonEncodeFile(ctx, s.fs, issueCommentPath(repo, id, 0), issue)
 		if err != nil {
 			return issues.Comment{}, err
 		}
@@ -637,7 +637,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 
 	// Get from storage.
 	var comment comment
-	err = jsonDecodeFile(s.fs, issueCommentPath(repo, id, cr.ID), &comment)
+	err = jsonDecodeFile(ctx, s.fs, issueCommentPath(repo, id, cr.ID), &comment)
 	if err != nil {
 		return issues.Comment{}, err
 	}
@@ -675,7 +675,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	}
 
 	// Commit to storage.
-	err = jsonEncodeFile(s.fs, issueCommentPath(repo, id, cr.ID), comment)
+	err = jsonEncodeFile(ctx, s.fs, issueCommentPath(repo, id, cr.ID), comment)
 	if err != nil {
 		return issues.Comment{}, err
 	}
@@ -800,8 +800,8 @@ func contains(set []userSpec, e users.UserSpec) int {
 }
 
 // nextID returns the next id for the given dir. If there are no previous elements, it begins with id 1.
-func nextID(fs webdav.FileSystem, dir string) (uint64, error) {
-	fis, err := readDirIDs(fs, dir)
+func nextID(ctx context.Context, fs webdav.FileSystem, dir string) (uint64, error) {
+	fis, err := readDirIDs(ctx, fs, dir)
 	if err != nil {
 		return 0, err
 	}

@@ -10,7 +10,7 @@ import (
 var _ issues.CopierFrom = service{}
 
 func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.RepoSpec) error {
-	if err := s.createNamespace(repo); err != nil {
+	if err := s.createNamespace(ctx, repo); err != nil {
 		return err
 	}
 
@@ -77,7 +77,7 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 				issue.comment = comment
 
 				// Put in storage.
-				err = jsonEncodeFile(s.fs, issueCommentPath(repo, i.ID, 0), issue)
+				err = jsonEncodeFile(ctx, s.fs, issueCommentPath(repo, i.ID, 0), issue)
 				if err != nil {
 					return err
 				}
@@ -85,7 +85,7 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 			}
 
 			// Put in storage.
-			err = jsonEncodeFile(s.fs, issueCommentPath(repo, i.ID, c.ID), comment)
+			err = jsonEncodeFile(ctx, s.fs, issueCommentPath(repo, i.ID, c.ID), comment)
 			if err != nil {
 				return err
 			}
@@ -106,7 +106,7 @@ func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.R
 			}
 
 			// Put in storage.
-			err = jsonEncodeFile(s.fs, issueEventPath(repo, i.ID, e.ID), event)
+			err = jsonEncodeFile(ctx, s.fs, issueEventPath(repo, i.ID, e.ID), event)
 			if err != nil {
 				return err
 			}

@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"time"
@@ -102,14 +103,14 @@ type event struct {
 // 	                ├── 0
 // 	                └── events
 
-func (s service) createNamespace(repo issues.RepoSpec) error {
+func (s service) createNamespace(ctx context.Context, repo issues.RepoSpec) error {
 	if path.Clean("/"+repo.URI) != "/"+repo.URI {
 		return fmt.Errorf("invalid repo.URI (not clean): %q", repo.URI)
 	}
 
 	// Only needed for first issue in the repo.
 	// THINK: Consider implicit dir adapter?
-	return vfsutil.MkdirAll(s.fs, issuesDir(repo), 0755)
+	return vfsutil.MkdirAll(ctx, s.fs, issuesDir(repo), 0755)
 }
 
 // issuesDir is '/'-separated path to issue storage dir.
