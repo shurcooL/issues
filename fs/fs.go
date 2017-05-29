@@ -132,6 +132,13 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 	}
 
 	author := issue.Author.UserSpec()
+	var labels []issues.Label
+	for _, l := range issue.Labels {
+		labels = append(labels, issues.Label{
+			Name:  l.Name,
+			Color: l.Color.RGB(),
+		})
+	}
 
 	if currentUser.ID != 0 {
 		// Mark as read.
@@ -143,9 +150,10 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 
 	// TODO: Eliminate comment body properties from issues.Issue. It's missing increasingly more fields, like Edited, etc.
 	return issues.Issue{
-		ID:    id,
-		State: issue.State,
-		Title: issue.Title,
+		ID:     id,
+		State:  issue.State,
+		Title:  issue.Title,
+		Labels: labels,
 		Comment: issues.Comment{
 			User:      s.user(ctx, author),
 			CreatedAt: issue.CreatedAt,
