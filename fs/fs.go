@@ -131,6 +131,10 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		return issues.Issue{}, err
 	}
 
+	comments, err := readDirIDs(ctx, s.fs, issueDir(repo, id)) // Count comments.
+	if err != nil {
+		return issues.Issue{}, err
+	}
 	author := issue.Author.UserSpec()
 	var labels []issues.Label
 	for _, l := range issue.Labels {
@@ -159,6 +163,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 			CreatedAt: issue.CreatedAt,
 			Editable:  nil == canEdit(ctx, currentUser, issue.Author),
 		},
+		Replies: len(comments) - 1,
 	}, nil
 }
 
