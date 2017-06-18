@@ -4,7 +4,6 @@ package issues
 import (
 	"context"
 	"fmt"
-	"image/color"
 	"strings"
 	"time"
 
@@ -69,19 +68,6 @@ type Issue struct {
 type Label struct {
 	Name  string
 	Color RGB
-}
-
-// FontColor returns one of "#fff" or "#000", whichever is a better fit for
-// the font color given the label color.
-func (l Label) FontColor() string {
-	// Convert label color to 8-bit grayscale, and make a decision based on that.
-	switch y := color.GrayModel.Convert(l.Color).(color.Gray).Y; {
-	case y < 128:
-		return "#fff"
-	case y >= 128:
-		return "#000"
-	}
-	panic("unreachable")
 }
 
 // TODO: Dedup.
