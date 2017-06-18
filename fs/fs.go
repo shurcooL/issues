@@ -334,9 +334,17 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 		return issues.Issue{}, err
 	}
 
+	var labels []label
+	for _, l := range i.Labels {
+		labels = append(labels, label{
+			Name:  l.Name,
+			Color: fromRGB(l.Color),
+		})
+	}
 	issue := issue{
-		State: issues.OpenState,
-		Title: i.Title,
+		State:  issues.OpenState,
+		Title:  i.Title,
+		Labels: labels,
 		comment: comment{
 			Author:    fromUserSpec(currentUser.UserSpec),
 			CreatedAt: time.Now().UTC(),
