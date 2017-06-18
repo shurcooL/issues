@@ -52,6 +52,7 @@ const issueDescriptionCommentID uint64 = 0
 func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
 	repo, err := ghRepoSpec(rs)
 	if err != nil {
+		// TODO: Map ghRepoSpec to HTTP 400 Bad Request error somehow... Else it becomes 500.
 		return nil, err
 	}
 	ghOpt := github.IssueListByRepoOptions{}
