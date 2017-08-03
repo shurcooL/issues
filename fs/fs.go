@@ -20,6 +20,7 @@ import (
 
 // NewService creates a virtual filesystem-backed issues.Service using root for storage.
 // It uses notifications service, if not nil.
+// It uses events service, if not nil.
 func NewService(root webdav.FileSystem, notifications notifications.ExternalService, events events.ExternalService, users users.Service) (issues.Service, error) {
 	return service{
 		fs:            root,
