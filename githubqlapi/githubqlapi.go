@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 
 	"github.com/google/go-github/github"
@@ -832,32 +831,23 @@ func ghRepoSpec(repo issues.RepoSpec) (repoSpec, error) {
 }
 
 type githubqlActor struct {
-	Login     githubql.String
-	AvatarURL githubql.URI `graphql:"avatarUrl(size: 96)"`
-	URL       githubql.URI
+	User struct {
+		DatabaseID uint64
+	} `graphql:"...on User"`
+	Login     string
+	AvatarURL string `graphql:"avatarUrl(size:96)"`
+	URL       string
 }
 
 func ghActor(actor githubqlActor) users.User {
-	// HACK: Parse user ID from avatar URL, which is like "https://avatars1.githubusercontent.com/u/17713359?v=3".
-	/*defer func() {
-		if recover() == nil {
-			return
-		}
-		goon.DumpExpr(actor)
-	}()*/
-	id, err := strconv.ParseUint(strings.Split(actor.AvatarURL.Path, "/")[2], 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
 	return users.User{
 		UserSpec: users.UserSpec{
-			ID:     id,
+			ID:     actor.User.DatabaseID,
 			Domain: "github.com",
 		},
-		Login:     string(actor.Login),
-		AvatarURL: actor.AvatarURL.String(),
-		HTMLURL:   actor.URL.String(),
+		Login:     actor.Login,
+		AvatarURL: actor.AvatarURL,
+		HTMLURL:   actor.URL,
 	}
 }
 
