@@ -32,7 +32,7 @@ func (s service) subscribe(ctx context.Context, repo issues.RepoSpec, issueID ui
 	}
 	subscribers = append(subscribers, mentions...)*/
 
-	return s.notifications.Subscribe(ctx, threadType, notifications.RepoSpec(repo), issueID, subscribers)
+	return s.notifications.Subscribe(ctx, notifications.RepoSpec(repo), threadType, issueID, subscribers)
 }
 
 // markRead marks the specified issue as read for current user.
@@ -41,7 +41,7 @@ func (s service) markRead(ctx context.Context, repo issues.RepoSpec, issueID uin
 		return nil
 	}
 
-	return s.notifications.MarkRead(ctx, threadType, notifications.RepoSpec(repo), issueID)
+	return s.notifications.MarkRead(ctx, notifications.RepoSpec(repo), threadType, issueID)
 }
 
 // notify notifies all subscribed users of an update that shows up in their Notification Center.
@@ -67,7 +67,7 @@ func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint6
 		HTMLURL:   htmlURL(repo.URI, issueID, fragment),
 	}
 
-	return s.notifications.Notify(ctx, threadType, notifications.RepoSpec(repo), issueID, nr)
+	return s.notifications.Notify(ctx, notifications.RepoSpec(repo), threadType, issueID, nr)
 }
 
 // TODO, THINK: Where should the logic to come up with the URL live?
