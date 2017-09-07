@@ -47,11 +47,10 @@ func (s service) logIssueComment(ctx context.Context, repo issues.RepoSpec, issu
 		Container: repo.URI,
 
 		Payload: eventpkg.IssueComment{
-			IssueTitle:           issue.Title,
-			IssueState:           string(issue.State),
-			CommentBody:          body,
-			CommentUserAvatarURL: actor.AvatarURL, // TODO: Consider storing UserSpec?
-			CommentHTMLURL:       htmlURL(repo.URI, issueID, fragment),
+			IssueTitle:     issue.Title,
+			IssueState:     string(issue.State),
+			CommentBody:    body,
+			CommentHTMLURL: htmlURL(repo.URI, issueID, fragment),
 		},
 	}
 	return s.events.Log(ctx, event)
