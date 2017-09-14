@@ -74,16 +74,15 @@ func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint6
 //              It's kinda related to the router/URL scheme of issuesapp...
 func htmlURL(repoURI string, issueID uint64, fragment string) string {
 	var htmlURL string
+	// TODO: Find a good way to factor out this logic and provide it to issues/fs in a reasonable way.
 	switch {
 	default:
-		htmlURL = fmt.Sprintf("https://%s/%v", repoURI, issueID)
-
-	// TODO: Find a good way to factor out this logic and provide it to issues/fs in a reasonable way.
+		htmlURL = fmt.Sprintf("https://%s/issues/%v", repoURI, issueID)
 	case repoURI == "dmitri.shuralyov.com/blog":
 		htmlURL = fmt.Sprintf("https://dmitri.shuralyov.com/blog/%v", issueID)
-	case strings.HasPrefix(repoURI, "dmitri.shuralyov.com/") ||
-		strings.HasPrefix(repoURI, "github.com/shurcooL/"):
-
+	case repoURI == "dmitri.shuralyov.com/idiomatic-go":
+		htmlURL = fmt.Sprintf("https://dmitri.shuralyov.com/idiomatic-go/entries/%v", issueID)
+	case strings.HasPrefix(repoURI, "github.com/shurcooL/"):
 		htmlURL = fmt.Sprintf("https://dmitri.shuralyov.com/issues/%s/%v", repoURI, issueID)
 	}
 	if fragment != "" {
