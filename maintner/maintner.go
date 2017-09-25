@@ -285,13 +285,13 @@ func (service) EditComment(_ context.Context, rs issues.RepoSpec, id uint64, cr 
 	return issues.Comment{}, fmt.Errorf("EditComment: not implemented")
 }
 
-// ghRepoID converts a RepoSpec into a maintner.GithubRepoID.
-func ghRepoID(repo issues.RepoSpec) (maintner.GithubRepoID, error) {
+// ghRepoID converts a RepoSpec into a maintner.GitHubRepoID.
+func ghRepoID(repo issues.RepoSpec) (maintner.GitHubRepoID, error) {
 	elems := strings.Split(repo.URI, "/")
 	if len(elems) != 2 || elems[0] == "" || elems[1] == "" {
-		return maintner.GithubRepoID{}, fmt.Errorf(`RepoSpec is not of form "owner/repo": %q`, repo.URI)
+		return maintner.GitHubRepoID{}, fmt.Errorf(`RepoSpec is not of form "owner/repo": %q`, repo.URI)
 	}
-	return maintner.GithubRepoID{
+	return maintner.GitHubRepoID{
 		Owner: elems[0],
 		Repo:  elems[1],
 	}, nil
