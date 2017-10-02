@@ -72,7 +72,7 @@ func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueL
 	var is []issues.Issue
 	for _, issue := range ghIssuesAndPRs {
 		// Filter out PRs.
-		if issue.PullRequestLinks != nil {
+		if issue.IsPullRequest() {
 			continue
 		}
 
