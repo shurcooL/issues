@@ -16,17 +16,13 @@ import (
 	"github.com/shurcooL/users"
 )
 
-// NewService creates a GitHub-backed issues.Service using given GitHub client.
+// NewService creates a GitHub-backed issues.Service using given GitHub clients.
 // It uses notifications service, if not nil. At this time it infers the current user
 // from the client (its authentication info), and cannot be used to serve multiple users.
-func NewService(client *github.Client, clientQL *githubql.Client, notifications notifications.ExternalService, users users.Service) issues.Service {
-	if client == nil {
-		client = github.NewClient(nil)
-	}
-
+func NewService(clientV3 *github.Client, clientV4 *githubql.Client, notifications notifications.ExternalService, users users.Service) issues.Service {
 	s := service{
-		cl:            client,
-		clQL:          clientQL,
+		clV3:          clientV3,
+		clV4:          clientV4,
 		notifications: notifications,
 		users:         users,
 	}
@@ -37,8 +33,8 @@ func NewService(client *github.Client, clientQL *githubql.Client, notifications 
 }
 
 type service struct {
-	cl   *github.Client
-	clQL *githubql.Client
+	clV3 *github.Client   // GitHub REST API v3 client.
+	clV4 *githubql.Client // GitHub GraphQL API v4 client.
 
 	// notifications may be nil if there's no notifications service.
 	notifications notifications.ExternalService
@@ -97,7 +93,7 @@ func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueL
 		"repositoryName":  githubql.String(repo.Repo),
 		"issuesStates":    states,
 	}
-	err = s.clQL.Query(ctx, &q, variables)
+	err = s.clV4.Query(ctx, &q, variables)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +151,7 @@ func (s service) Count(ctx context.Context, rs issues.RepoSpec, opt issues.Issue
 		"repositoryName":  githubql.String(repo.Repo),
 		"issuesStates":    states,
 	}
-	err = s.clQL.Query(ctx, &q, variables)
+	err = s.clV4.Query(ctx, &q, variables)
 	return q.Repository.Issues.TotalCount, err
 }
 
@@ -182,7 +178,7 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 		"repositoryName":  githubql.String(repo.Repo),
 		"issueNumber":     githubql.Int(id),
 	}
-	err = s.clQL.Query(ctx, &q, variables)
+	err = s.clV4.Query(ctx, &q, variables)
 	if err != nil {
 		return issues.Issue{}, err
 	}
@@ -238,7 +234,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 		"repositoryName":  githubql.String(repo.Repo),
 		"issueNumber":     githubql.Int(id),
 	}
-	err = s.clQL.Query(ctx, &q, variables)
+	err = s.clV4.Query(ctx, &q, variables)
 	if err != nil {
 		return comments, err
 	}
@@ -294,7 +290,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 			"commentsCursor":  (*githubql.String)(nil),
 		}
 		for {
-			err := s.clQL.Query(ctx, &q, variables)
+			err := s.clV4.Query(ctx, &q, variables)
 			if err != nil {
 				return comments, err
 			}
@@ -381,7 +377,7 @@ func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, 
 		"repositoryName":  githubql.String(repo.Repo),
 		"issueNumber":     githubql.Int(id),
 	}
-	err = s.clQL.Query(ctx, &q, variables)
+	err = s.clV4.Query(ctx, &q, variables)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +458,7 @@ func (s service) CreateComment(ctx context.Context, rs issues.RepoSpec, id uint6
 		"repositoryName":  githubql.String(repo.Repo),
 		"issueNumber":     githubql.Int(id),
 	}
-	err = s.clQL.Query(ctx, &q, variables)
+	err = s.clV4.Query(ctx, &q, variables)
 	if err != nil {
 		return issues.Comment{}, err
 	}
@@ -483,7 +479,7 @@ func (s service) CreateComment(ctx context.Context, rs issues.RepoSpec, id uint6
 		SubjectID: q.Repository.Issue.ID,
 		Body:      githubql.String(c.Body),
 	}
-	err = s.clQL.Mutate(ctx, &m, input, nil)
+	err = s.clV4.Mutate(ctx, &m, input, nil)
 	if err != nil {
 		return issues.Comment{}, err
 	}
@@ -502,7 +498,7 @@ func (s service) Create(ctx context.Context, rs issues.RepoSpec, i issues.Issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	issue, _, err := s.cl.Issues.Create(ctx, repo.Owner, repo.Repo, &github.IssueRequest{
+	issue, _, err := s.clV3.Issues.Create(ctx, repo.Owner, repo.Repo, &github.IssueRequest{
 		Title: &i.Title,
 		Body:  &i.Body,
 	})
@@ -541,7 +537,7 @@ func (s service) Edit(ctx context.Context, rs issues.RepoSpec, id uint64, ir iss
 		ghIR.State = &state
 	}
 
-	issue, _, err := s.cl.Issues.Edit(ctx, repo.Owner, repo.Repo, int(id), &ghIR)
+	issue, _, err := s.clV3.Issues.Edit(ctx, repo.Owner, repo.Repo, int(id), &ghIR)
 	if err != nil {
 		return issues.Issue{}, nil, err
 	}
@@ -602,7 +598,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 		// Apply edits.
 		if cr.Body != nil {
 			// Use Issues.Edit() API to edit comment 0 (the issue description).
-			issue, _, err := s.cl.Issues.Edit(ctx, repo.Owner, repo.Repo, int(id), &github.IssueRequest{
+			issue, _, err := s.clV3.Issues.Edit(ctx, repo.Owner, repo.Repo, int(id), &github.IssueRequest{
 				Body: cr.Body,
 			})
 			if err != nil {
@@ -648,7 +644,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 				"issueNumber":     githubql.Int(id),
 				"reactionContent": reactionContent,
 			}
-			err = s.clQL.Query(ctx, &q, variables)
+			err = s.clV4.Query(ctx, &q, variables)
 			if err != nil {
 				return issues.Comment{}, err
 			}
@@ -667,7 +663,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 					SubjectID: q.Repository.Issue.ID,
 					Content:   reactionContent,
 				}
-				err := s.clQL.Mutate(ctx, &m, input, nil)
+				err := s.clV4.Mutate(ctx, &m, input, nil)
 				if err != nil {
 					return issues.Comment{}, err
 				}
@@ -685,7 +681,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 					SubjectID: q.Repository.Issue.ID,
 					Content:   reactionContent,
 				}
-				err := s.clQL.Mutate(ctx, &m, input, nil)
+				err := s.clV4.Mutate(ctx, &m, input, nil)
 				if err != nil {
 					return issues.Comment{}, err
 				}
@@ -710,7 +706,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 	// Apply edits.
 	if cr.Body != nil {
 		// GitHub API uses comment ID and doesn't need issue ID. Comment IDs are unique per repo (rather than per issue).
-		ghComment, _, err := s.cl.Issues.EditComment(ctx, repo.Owner, repo.Repo, int(cr.ID), &github.IssueComment{
+		ghComment, _, err := s.clV3.Issues.EditComment(ctx, repo.Owner, repo.Repo, int(cr.ID), &github.IssueComment{
 			Body: cr.Body,
 		})
 		if err != nil {
@@ -753,7 +749,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 			"commentID":       commentID,
 			"reactionContent": reactionContent,
 		}
-		err = s.clQL.Query(ctx, &q, variables)
+		err = s.clV4.Query(ctx, &q, variables)
 		if err != nil {
 			return issues.Comment{}, err
 		}
@@ -772,7 +768,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 				SubjectID: commentID,
 				Content:   reactionContent,
 			}
-			err := s.clQL.Mutate(ctx, &m, input, nil)
+			err := s.clV4.Mutate(ctx, &m, input, nil)
 			if err != nil {
 				return issues.Comment{}, err
 			}
@@ -790,7 +786,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 				SubjectID: commentID,
 				Content:   reactionContent,
 			}
-			err := s.clQL.Mutate(ctx, &m, input, nil)
+			err := s.clV4.Mutate(ctx, &m, input, nil)
 			if err != nil {
 				return issues.Comment{}, err
 			}
