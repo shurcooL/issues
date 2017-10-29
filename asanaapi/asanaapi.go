@@ -11,33 +11,35 @@ import (
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
+	anusers "github.com/shurcooL/users/asanaapi"
 	"github.com/tambet/go-asana/asana"
 )
 
 // NewService creates a Asana-backed issues.Service using given Asana client.
-// At this time it infers the current user from the client (its authentication info), and cannot be used to serve multiple users.
-func NewService(client *asana.Client, users users.Service) issues.Service {
+// At this time it infers the current user from the client (its authentication info),
+// and cannot be used to serve multiple users.
+func NewService(client *asana.Client) (issues.Service, error) {
 	if client == nil {
 		client = asana.NewClient(nil)
 	}
-
-	s := service{
-		cl:    client,
-		users: users,
+	users, err := anusers.NewService(client)
+	if err != nil {
+		return nil, err
 	}
-
-	s.currentUser, s.currentUserErr = s.users.GetAuthenticatedSpec(context.TODO())
-
-	return s
+	currentUser, err := users.GetAuthenticatedSpec(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	return service{
+		cl:          client,
+		currentUser: currentUser,
+	}, nil
 }
 
 type service struct {
 	cl *asana.Client
 
-	users users.Service
-
-	currentUser    users.UserSpec
-	currentUserErr error
+	currentUser users.UserSpec
 }
 
 // We use 0 as a special ID for the comment that is the issue description. This comment is edited differently.

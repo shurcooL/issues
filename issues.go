@@ -181,10 +181,10 @@ func (cr CommentRequest) Validate() (requiresEdit bool, err error) {
 			return requiresEdit, fmt.Errorf("comment body can't be blank or all whitespace")
 		}
 	}
-	if cr.Reaction != nil {
+	/*if cr.Reaction != nil {
 		// TODO: Maybe validate that the emojiID is one of supported ones.
 		//       Or maybe not (unsupported ones can be handled by frontend component).
 		//       That way custom emoji can be added/removed, etc. Figure out what the best thing to do is and do it.
-	}
+	}*/
 	return requiresEdit, nil
 }

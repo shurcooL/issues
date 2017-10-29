@@ -13,25 +13,29 @@ import (
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/notifications"
 	"github.com/shurcooL/users"
+	ghusers "github.com/shurcooL/users/githubapi"
 )
 
 // NewService creates a GitHub-backed issues.Service using given GitHub client.
 // It uses notifications service, if not nil. At this time it infers the current user
 // from the client (its authentication info), and cannot be used to serve multiple users.
-func NewService(client *github.Client, notifications notifications.ExternalService, users users.Service) issues.Service {
+func NewService(client *github.Client, notifications notifications.ExternalService) (issues.Service, error) {
 	if client == nil {
 		client = github.NewClient(nil)
 	}
-
-	s := service{
+	users, err := ghusers.NewService(client)
+	if err != nil {
+		return nil, err
+	}
+	currentUser, err := users.GetAuthenticated(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	return service{
 		cl:            client,
 		notifications: notifications,
-		users:         users,
-	}
-
-	s.currentUser, s.currentUserErr = s.users.GetAuthenticated(context.TODO())
-
-	return s
+		currentUser:   currentUser,
+	}, nil
 }
 
 type service struct {
@@ -40,10 +44,7 @@ type service struct {
 	// notifications may be nil if there's no notifications service.
 	notifications notifications.ExternalService
 
-	users users.Service
-
-	currentUser    users.User
-	currentUserErr error
+	currentUser users.User
 }
 
 // We use 0 as a special ID for the comment that is the issue description. This comment is edited differently.
