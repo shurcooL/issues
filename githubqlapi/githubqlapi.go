@@ -81,7 +81,7 @@ func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueL
 							Color string
 						}
 					} `graphql:"labels(first:100)"`
-					Author    githubqlActor
+					Author    *githubqlActor
 					CreatedAt githubql.DateTime
 					Comments  struct {
 						TotalCount int
@@ -169,7 +169,7 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 				Number          uint64
 				State           githubql.IssueState
 				Title           string
-				Author          githubqlActor
+				Author          *githubqlActor
 				CreatedAt       githubql.DateTime
 				ViewerCanUpdate githubql.Boolean
 			} `graphql:"issue(number:$issueNumber)"`
@@ -219,7 +219,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 	var q struct {
 		Repository struct {
 			Issue struct {
-				Author          githubqlActor
+				Author          *githubqlActor
 				PublishedAt     githubql.DateTime
 				LastEditedAt    *githubql.DateTime
 				Editor          *githubqlActor
@@ -248,7 +248,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 	var edited *issues.Edited
 	if issue.LastEditedAt != nil {
 		edited = &issues.Edited{
-			By: ghActor(*issue.Editor),
+			By: ghActor(issue.Editor),
 			At: issue.LastEditedAt.Time,
 		}
 	}
@@ -269,7 +269,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 					Comments struct {
 						Nodes []struct {
 							DatabaseID      githubql.Int
-							Author          githubqlActor
+							Author          *githubqlActor
 							PublishedAt     githubql.DateTime
 							LastEditedAt    *githubql.DateTime
 							Editor          *githubqlActor
@@ -304,7 +304,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 				var edited *issues.Edited
 				if comment.LastEditedAt != nil {
 					edited = &issues.Edited{
-						By: ghActor(*comment.Editor),
+						By: ghActor(comment.Editor),
 						At: comment.LastEditedAt.Time,
 					}
 				}
@@ -335,7 +335,7 @@ func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, 
 		return nil, err
 	}
 	type event struct { // Common fields for all events.
-		Actor     githubqlActor
+		Actor     *githubqlActor
 		CreatedAt githubql.DateTime
 	}
 	var q struct {
@@ -469,7 +469,7 @@ func (s service) CreateComment(ctx context.Context, rs issues.RepoSpec, id uint6
 			CommentEdge struct {
 				Node struct {
 					DatabaseID      githubql.Int
-					Author          githubqlActor
+					Author          *githubqlActor
 					PublishedAt     githubql.DateTime
 					Body            githubql.String
 					ViewerCanUpdate githubql.Boolean
@@ -837,8 +837,8 @@ type githubqlActor struct {
 	URL       string
 }
 
-func ghActor(actor githubqlActor) users.User {
-	if actor.User.DatabaseID == 0 {
+func ghActor(actor *githubqlActor) users.User {
+	if actor == nil {
 		// Deleted user, replace with https://github.com/ghost.
 		return users.User{
 			UserSpec: users.UserSpec{
@@ -915,7 +915,7 @@ func ghColor(hex string) issues.RGB {
 type reactionGroups []struct {
 	Content githubql.ReactionContent
 	Users   struct {
-		Nodes      []githubqlActor
+		Nodes      []*githubqlActor
 		TotalCount githubql.Int
 	} `graphql:"users(first:10)"`
 	ViewerHasReacted githubql.Boolean
