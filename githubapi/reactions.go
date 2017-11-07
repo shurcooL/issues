@@ -1,96 +1,94 @@
 package githubapi
 
 import (
-	"context"
+	"fmt"
 
-	"github.com/google/go-github/github"
+	"github.com/shurcooL/githubql"
 	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
 )
 
-// reactions converts a []*github.Reaction to []reactions.Reaction.
-func (s service) reactions(ghReactions []*github.Reaction) ([]reactions.Reaction, error) {
+type reactionGroups []struct {
+	Content githubql.ReactionContent
+	Users   struct {
+		Nodes      []*githubqlActor
+		TotalCount githubql.Int
+	} `graphql:"users(first:10)"`
+	ViewerHasReacted githubql.Boolean
+}
+
+// reactions converts []githubql.ReactionGroup to []reactions.Reaction.
+func (s service) reactions(rgs reactionGroups) ([]reactions.Reaction, error) {
 	var rs []reactions.Reaction
-	var m = make(map[string]int) // EmojiID -> rs index.
-	for _, reaction := range ghReactions {
-		i, ok := m[*reaction.Content]
-		if !ok {
-			// First reaction of its type, add to rs and m.
-			rs = append(rs, reactions.Reaction{
-				Reaction: internalizeReaction(*reaction.Content),
-			})
-			i = len(rs) - 1
-			m[*reaction.Content] = i
+	for _, rg := range rgs {
+		if rg.Users.TotalCount == 0 {
+			continue
 		}
 
 		// Only return the details of first few users and authed user.
-		const expandUsers = 10
-		isAuthedUser := s.currentUser.ID != 0 && uint64(*reaction.User.ID) == s.currentUser.ID
-		if len(rs[i].Users) < expandUsers || isAuthedUser {
-			rs[i].Users = append(rs[i].Users, ghUser(reaction.User))
-		} else {
-			rs[i].Users = append(rs[i].Users, users.User{})
+		var us []users.User
+		addedAuthedUser := false
+		for i := 0; i < int(rg.Users.TotalCount); i++ {
+			if i < len(rg.Users.Nodes) {
+				actor := ghActor(rg.Users.Nodes[i])
+				us = append(us, actor)
+				if s.currentUser.ID != 0 && actor.UserSpec == s.currentUser.UserSpec {
+					addedAuthedUser = true
+				}
+			} else if i == len(rg.Users.Nodes) {
+				// Add authed user last if they've reacted, but haven't been added already.
+				if bool(rg.ViewerHasReacted) && !addedAuthedUser {
+					us = append(us, s.currentUser)
+				}
+			} else {
+				us = append(us, users.User{})
+			}
 		}
+
+		rs = append(rs, reactions.Reaction{
+			Reaction: internalizeReaction(rg.Content),
+			Users:    us,
+		})
 	}
 	return rs, nil
 }
 
-// listIssueReactions fetches all pages.
-func (s service) listIssueReactions(ctx context.Context, owner, repo string, id int) ([]*github.Reaction, error) {
-	var issueReactions []*github.Reaction
-	ghOpt := &github.ListOptions{}
-	for {
-		irs, resp, err := s.cl.Reactions.ListIssueReactions(ctx, owner, repo, id, ghOpt)
-		if err != nil {
-			return nil, err
-		}
-		issueReactions = append(issueReactions, irs...)
-		if resp.NextPage == 0 {
-			break
-		}
-		ghOpt.Page = resp.NextPage
-	}
-	return issueReactions, nil
-}
-
-// listIssueCommentReactions fetches all pages.
-func (s service) listIssueCommentReactions(ctx context.Context, owner, repo string, id int) ([]*github.Reaction, error) {
-	var commentReactions []*github.Reaction
-	ghOpt := &github.ListOptions{}
-	for {
-		crs, resp, err := s.cl.Reactions.ListIssueCommentReactions(ctx, owner, repo, id, ghOpt)
-		if err != nil {
-			return nil, err
-		}
-		commentReactions = append(commentReactions, crs...)
-		if resp.NextPage == 0 {
-			break
-		}
-		ghOpt.Page = resp.NextPage
-	}
-	return commentReactions, nil
-}
-
-// internalizeReaction converts github.Reaction.Content to reactions.EmojiID.
-func internalizeReaction(reaction string) reactions.EmojiID {
+// internalizeReaction converts githubql.ReactionContent to reactions.EmojiID.
+func internalizeReaction(reaction githubql.ReactionContent) reactions.EmojiID {
 	switch reaction {
-	default:
-		return reactions.EmojiID(reaction)
-	case "laugh":
+	case githubql.ReactionContentThumbsUp:
+		return "+1"
+	case githubql.ReactionContentThumbsDown:
+		return "-1"
+	case githubql.ReactionContentLaugh:
 		return "smile"
-	case "hooray":
+	case githubql.ReactionContentHooray:
 		return "tada"
+	case githubql.ReactionContentConfused:
+		return "confused"
+	case githubql.ReactionContentHeart:
+		return "heart"
+	default:
+		panic("unreachable")
 	}
 }
 
-// externalizeReaction converts reactions.EmojiID to github.Reaction.Content.
-func externalizeReaction(reaction reactions.EmojiID) string {
+// externalizeReaction converts reactions.EmojiID to githubql.ReactionContent.
+func externalizeReaction(reaction reactions.EmojiID) (githubql.ReactionContent, error) {
 	switch reaction {
-	default:
-		return string(reaction)
+	case "+1":
+		return githubql.ReactionContentThumbsUp, nil
+	case "-1":
+		return githubql.ReactionContentThumbsDown, nil
 	case "smile":
-		return "laugh"
+		return githubql.ReactionContentLaugh, nil
 	case "tada":
-		return "hooray"
+		return githubql.ReactionContentHooray, nil
+	case "confused":
+		return githubql.ReactionContentConfused, nil
+	case "heart":
+		return githubql.ReactionContentHeart, nil
+	default:
+		return "", fmt.Errorf("%q is an unsupported reaction", reaction)
 	}
 }
