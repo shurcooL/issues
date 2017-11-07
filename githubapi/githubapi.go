@@ -324,6 +324,11 @@ func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, 
 			Type:      et,
 		}
 		switch et {
+		case issues.Closed:
+			e.Close = issues.Close{
+				CommitID:      *event.CommitID,
+				CommitHTMLURL: "", // TODO: Implement (being mindful that the commit can be in a different repository).
+			}
 		case issues.Renamed:
 			e.Rename = &issues.Rename{
 				From: *event.Rename.From,

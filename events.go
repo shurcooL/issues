@@ -12,6 +12,7 @@ type Event struct {
 	Actor     users.User
 	CreatedAt time.Time
 	Type      EventType
+	Close     Close   // Close is only specified for Closed events.
 	Rename    *Rename // Rename is only provided for Renamed events.
 	Label     *Label  // Label is only provided for Labeled and Unlabeled events.
 }
@@ -42,6 +43,12 @@ func (et EventType) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// Close provides details for a Closed event.
+type Close struct {
+	CommitID      string // CommitID is SHA of commit that closed the issue, or empty string if there's no associated commit.
+	CommitHTMLURL string // Optional.
 }
 
 // Rename provides details for a Renamed event.

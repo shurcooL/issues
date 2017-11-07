@@ -346,6 +346,10 @@ func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, 
 						Typename    string `graphql:"__typename"`
 						ClosedEvent struct {
 							event
+							Commit struct {
+								OID string
+								URL string
+							}
 						} `graphql:"...on ClosedEvent"`
 						ReopenedEvent struct {
 							event
@@ -397,6 +401,10 @@ func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, 
 		case issues.Closed:
 			e.Actor = ghActor(event.ClosedEvent.Actor)
 			e.CreatedAt = event.ClosedEvent.CreatedAt.Time
+			e.Close = issues.Close{
+				CommitID:      event.ClosedEvent.Commit.OID,
+				CommitHTMLURL: event.ClosedEvent.Commit.URL,
+			}
 		case issues.Reopened:
 			e.Actor = ghActor(event.ReopenedEvent.Actor)
 			e.CreatedAt = event.ReopenedEvent.CreatedAt.Time
