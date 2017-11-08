@@ -904,7 +904,7 @@ func ghEventType(typename string) issues.EventType {
 		return issues.Labeled
 	case "UnlabeledEvent":
 		return issues.Unlabeled
-	case "???": // TODO: Wait for GitHub to add support.
+	case "CommentDeletedEvent":
 		return issues.CommentDeleted
 	default:
 		return issues.EventType(typename)
