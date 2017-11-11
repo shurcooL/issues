@@ -280,7 +280,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 							EndCursor   githubql.String
 							HasNextPage githubql.Boolean
 						}
-					} `graphql:"comments(first:1,after:$commentsCursor)"` // TODO: Increase page size too 100 after done testing.
+					} `graphql:"comments(first:100,after:$commentsCursor)"`
 				} `graphql:"issue(number:$issueNumber)"`
 			} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
 		}
