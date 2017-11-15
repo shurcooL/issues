@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/github"
 	"github.com/shurcooL/githubql"
@@ -555,7 +556,7 @@ func (s service) Edit(ctx context.Context, rs issues.RepoSpec, id uint64, ir iss
 	event := issues.Event{
 		// TODO: Figure out if event ID needs to be set, and if so, how to best do that...
 		Actor:     s.currentUser, // Only logged in users can edit, so we're guaranteed to have a current user.
-		CreatedAt: *issue.CreatedAt,
+		CreatedAt: time.Now().UTC(),
 	}
 	// TODO: A single edit operation can result in multiple events, we should emit multiple events in such cases. We're currently emitting at most one event.
 	switch {
