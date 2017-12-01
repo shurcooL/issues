@@ -241,10 +241,6 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 		return comments, err
 	}
 	issue := q.Repository.Issue
-	reactions, err := s.reactions(issue.ReactionGroups)
-	if err != nil {
-		return comments, err
-	}
 	var edited *issues.Edited
 	if issue.LastEditedAt != nil {
 		edited = &issues.Edited{
@@ -258,7 +254,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 		CreatedAt: issue.PublishedAt.Time,
 		Edited:    edited,
 		Body:      string(issue.Body),
-		Reactions: reactions,
+		Reactions: s.reactions(issue.ReactionGroups),
 		Editable:  bool(issue.ViewerCanUpdate),
 	})
 
@@ -297,10 +293,6 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 				return comments, err
 			}
 			for _, comment := range q.Repository.Issue.Comments.Nodes {
-				reactions, err := s.reactions(comment.ReactionGroups)
-				if err != nil {
-					return comments, err
-				}
 				var edited *issues.Edited
 				if comment.LastEditedAt != nil {
 					edited = &issues.Edited{
@@ -314,7 +306,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 					CreatedAt: comment.PublishedAt.Time,
 					Edited:    edited,
 					Body:      string(comment.Body),
-					Reactions: reactions,
+					Reactions: s.reactions(comment.ReactionGroups),
 					Editable:  bool(comment.ViewerCanUpdate),
 				})
 			}
@@ -697,15 +689,9 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 				}
 				rgs = m.RemoveReaction.Subject.ReactionGroups
 			}
-
-			reactions, err := s.reactions(rgs)
-			if err != nil {
-				return issues.Comment{}, err
-			}
-
 			// TODO: Consider setting other fields? But it's semi-expensive (another API call) and not used by app...
 			//       Actually, now that using GraphQL, no longer that expensive (can be same API call).
-			comment.Reactions = reactions
+			comment.Reactions = s.reactions(rgs)
 		}
 
 		return comment, nil
@@ -802,15 +788,9 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 			}
 			rgs = m.RemoveReaction.Subject.ReactionGroups
 		}
-
-		reactions, err := s.reactions(rgs)
-		if err != nil {
-			return issues.Comment{}, err
-		}
-
 		// TODO: Consider setting other fields? But it's semi-expensive (another API call) and not used by app...
 		//       Actually, now that using GraphQL, no longer that expensive (can be same API call).
-		comment.Reactions = reactions
+		comment.Reactions = s.reactions(rgs)
 	}
 
 	return comment, nil

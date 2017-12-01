@@ -18,7 +18,7 @@ type reactionGroups []struct {
 }
 
 // reactions converts []githubql.ReactionGroup to []reactions.Reaction.
-func (s service) reactions(rgs reactionGroups) ([]reactions.Reaction, error) {
+func (s service) reactions(rgs reactionGroups) []reactions.Reaction {
 	var rs []reactions.Reaction
 	for _, rg := range rgs {
 		if rg.Users.TotalCount == 0 {
@@ -52,7 +52,7 @@ func (s service) reactions(rgs reactionGroups) ([]reactions.Reaction, error) {
 			Users:    us,
 		})
 	}
-	return rs, nil
+	return rs
 }
 
 // internalizeReaction converts githubql.ReactionContent to reactions.EmojiID.
