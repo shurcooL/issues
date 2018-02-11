@@ -45,7 +45,9 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 	var is []issues.Issue
 
 	dirs, err := readDirIDs(ctx, s.fs, issuesDir(repo))
-	if err != nil {
+	if os.IsNotExist(err) {
+		dirs = nil
+	} else if err != nil {
 		return is, err
 	}
 	for i := len(dirs); i > 0; i-- {
@@ -96,7 +98,9 @@ func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.Iss
 	var count uint64
 
 	dirs, err := readDirIDs(ctx, s.fs, issuesDir(repo))
-	if err != nil {
+	if os.IsNotExist(err) {
+		dirs = nil
+	} else if err != nil {
 		return 0, err
 	}
 	for _, dir := range dirs {
