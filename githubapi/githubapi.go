@@ -207,6 +207,7 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 	}, nil
 }
 
+// TODO: Deprecate in favor of ListTimeline.
 func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Comment, error) {
 	// TODO: Respect opt.Start and opt.Length, if given.
 
@@ -300,6 +301,7 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 	return comments, nil
 }
 
+// TODO: Deprecate in favor of ListTimeline.
 func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
 	repo, err := ghRepoSpec(rs)
 	if err != nil {
@@ -420,6 +422,197 @@ func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, 
 		events = events[start:end]
 	}
 	return events, nil
+}
+
+func (service) IsTimelineLister(issues.RepoSpec) bool { return true }
+
+func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]interface{}, error) {
+	repo, err := ghRepoSpec(rs)
+	if err != nil {
+		// TODO: Map to 400 Bad Request HTTP error.
+		return nil, err
+	}
+	type comment struct { // Comment fields.
+		Author          *githubqlActor
+		PublishedAt     githubql.DateTime
+		LastEditedAt    *githubql.DateTime
+		Editor          *githubqlActor
+		Body            string
+		ReactionGroups  reactionGroups
+		ViewerCanUpdate bool
+	}
+	type event struct { // Common fields for all events.
+		Actor     *githubqlActor
+		CreatedAt githubql.DateTime
+	}
+	var q struct {
+		Repository struct {
+			Issue struct {
+				comment  `graphql:"...@include(if:$firstPage)"` // Fetch the issue description only on first page.
+				Timeline struct {
+					Nodes []struct {
+						Typename     string `graphql:"__typename"`
+						IssueComment struct {
+							DatabaseID uint64
+							comment
+						} `graphql:"...on IssueComment"`
+						ClosedEvent struct {
+							event
+							Commit struct {
+								OID string
+								URL string
+							}
+						} `graphql:"...on ClosedEvent"`
+						ReopenedEvent struct {
+							event
+						} `graphql:"...on ReopenedEvent"`
+						RenamedTitleEvent struct {
+							event
+							CurrentTitle  string
+							PreviousTitle string
+						} `graphql:"...on RenamedTitleEvent"`
+						LabeledEvent struct {
+							event
+							Label struct {
+								Name  string
+								Color string
+							}
+						} `graphql:"...on LabeledEvent"`
+						UnlabeledEvent struct {
+							event
+							Label struct {
+								Name  string
+								Color string
+							}
+						} `graphql:"...on UnlabeledEvent"`
+					}
+					PageInfo struct {
+						EndCursor   githubql.String
+						HasNextPage githubql.Boolean
+					}
+				} `graphql:"timeline(first:100,after:$timelineCursor)"`
+			} `graphql:"issue(number:$issueNumber)"`
+		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
+	}
+	variables := map[string]interface{}{
+		"repositoryOwner": githubql.String(repo.Owner),
+		"repositoryName":  githubql.String(repo.Repo),
+		"issueNumber":     githubql.Int(id),
+		"firstPage":       githubql.Boolean(true),
+		"timelineCursor":  (*githubql.String)(nil),
+	}
+	var timeline []interface{} // Of type issues.Comment and issues.Event.
+	for {
+		err := s.clV4.Query(ctx, &q, variables)
+		if err != nil {
+			return timeline, err
+		}
+		if variables["firstPage"].(githubql.Boolean) {
+			issue := q.Repository.Issue.comment // Issue description comment.
+			var edited *issues.Edited
+			if issue.LastEditedAt != nil {
+				edited = &issues.Edited{
+					By: ghActor(issue.Editor),
+					At: issue.LastEditedAt.Time,
+				}
+			}
+			timeline = append(timeline, issues.Comment{
+				ID:        issueDescriptionCommentID,
+				User:      ghActor(issue.Author),
+				CreatedAt: issue.PublishedAt.Time,
+				Edited:    edited,
+				Body:      issue.Body,
+				Reactions: s.reactions(issue.ReactionGroups),
+				Editable:  issue.ViewerCanUpdate,
+			})
+		}
+		for _, n := range q.Repository.Issue.Timeline.Nodes {
+			switch n.Typename {
+			case "IssueComment":
+				comment := n.IssueComment
+				var edited *issues.Edited
+				if comment.LastEditedAt != nil {
+					edited = &issues.Edited{
+						By: ghActor(comment.Editor),
+						At: comment.LastEditedAt.Time,
+					}
+				}
+				timeline = append(timeline, issues.Comment{
+					ID:        comment.DatabaseID,
+					User:      ghActor(comment.Author),
+					CreatedAt: comment.PublishedAt.Time,
+					Edited:    edited,
+					Body:      comment.Body,
+					Reactions: s.reactions(comment.ReactionGroups),
+					Editable:  comment.ViewerCanUpdate,
+				})
+			default:
+				et := ghEventType(n.Typename)
+				if !et.Valid() {
+					continue
+				}
+				e := issues.Event{
+					//ID:   0, // TODO.
+					Type: et,
+				}
+				switch et {
+				case issues.Closed:
+					e.Actor = ghActor(n.ClosedEvent.Actor)
+					e.CreatedAt = n.ClosedEvent.CreatedAt.Time
+					e.Close = issues.Close{
+						CommitID:      n.ClosedEvent.Commit.OID,
+						CommitHTMLURL: n.ClosedEvent.Commit.URL,
+					}
+				case issues.Reopened:
+					e.Actor = ghActor(n.ReopenedEvent.Actor)
+					e.CreatedAt = n.ReopenedEvent.CreatedAt.Time
+				case issues.Renamed:
+					e.Actor = ghActor(n.RenamedTitleEvent.Actor)
+					e.CreatedAt = n.RenamedTitleEvent.CreatedAt.Time
+					e.Rename = &issues.Rename{
+						From: n.RenamedTitleEvent.PreviousTitle,
+						To:   n.RenamedTitleEvent.CurrentTitle,
+					}
+				case issues.Labeled:
+					e.Actor = ghActor(n.LabeledEvent.Actor)
+					e.CreatedAt = n.LabeledEvent.CreatedAt.Time
+					e.Label = &issues.Label{
+						Name:  n.LabeledEvent.Label.Name,
+						Color: ghColor(n.LabeledEvent.Label.Color),
+					}
+				case issues.Unlabeled:
+					e.Actor = ghActor(n.UnlabeledEvent.Actor)
+					e.CreatedAt = n.UnlabeledEvent.CreatedAt.Time
+					e.Label = &issues.Label{
+						Name:  n.UnlabeledEvent.Label.Name,
+						Color: ghColor(n.UnlabeledEvent.Label.Color),
+					}
+				default:
+					continue
+				}
+				timeline = append(timeline, e)
+			}
+		}
+		if !q.Repository.Issue.Timeline.PageInfo.HasNextPage {
+			break
+		}
+		variables["firstPage"] = githubql.Boolean(false)
+		variables["timelineCursor"] = githubql.NewString(q.Repository.Issue.Timeline.PageInfo.EndCursor)
+	}
+	// We can't just delegate pagination to GitHub because our timeline items may not match up 1:1,
+	// e.g., we want to skip Commit in the timeline, etc. (At least for now; may reconsider later.)
+	if opt != nil {
+		start := opt.Start
+		if start > len(timeline) {
+			start = len(timeline)
+		}
+		end := opt.Start + opt.Length
+		if end > len(timeline) {
+			end = len(timeline)
+		}
+		timeline = timeline[start:end]
+	}
+	return timeline, nil
 }
 
 func (s service) CreateComment(ctx context.Context, rs issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
