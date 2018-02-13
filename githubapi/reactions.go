@@ -11,7 +11,7 @@ import (
 type reactionGroups []struct {
 	Content githubql.ReactionContent
 	Users   struct {
-		Nodes      []*githubqlActor
+		Nodes      []*githubqlUser
 		TotalCount int
 	} `graphql:"users(first:10)"`
 	ViewerHasReacted bool
@@ -30,9 +30,9 @@ func (s service) reactions(rgs reactionGroups) []reactions.Reaction {
 		addedAuthedUser := false
 		for i := 0; i < rg.Users.TotalCount; i++ {
 			if i < len(rg.Users.Nodes) {
-				actor := ghActor(rg.Users.Nodes[i])
-				us = append(us, actor)
-				if s.currentUser.ID != 0 && actor.UserSpec == s.currentUser.UserSpec {
+				user := ghUser(rg.Users.Nodes[i])
+				us = append(us, user)
+				if s.currentUser.ID != 0 && user.UserSpec == s.currentUser.UserSpec {
 					addedAuthedUser = true
 				}
 			} else if i == len(rg.Users.Nodes) {

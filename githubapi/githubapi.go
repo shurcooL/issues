@@ -514,7 +514,7 @@ func (s service) Create(ctx context.Context, rs issues.RepoSpec, i issues.Issue)
 		Title: *issue.Title,
 		Comment: issues.Comment{
 			ID:        issueDescriptionCommentID,
-			User:      ghUser(issue.User),
+			User:      ghV3User(issue.User),
 			CreatedAt: *issue.CreatedAt,
 			Editable:  true, // You can always edit issues you've created.
 		},
@@ -577,7 +577,7 @@ func (s service) Edit(ctx context.Context, rs issues.RepoSpec, id uint64, ir iss
 		Title: *issue.Title,
 		Comment: issues.Comment{
 			ID:        issueDescriptionCommentID,
-			User:      ghUser(issue.User),
+			User:      ghV3User(issue.User),
 			CreatedAt: *issue.CreatedAt,
 			Editable:  true, // You can always edit issues you've edited.
 		},
@@ -611,13 +611,13 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 			/* TODO: Get the actual edited information once GitHub API allows it. Can't use issue.UpdatedAt because of false positives, since it includes the entire issue, not just its comment body.
 			if !issue.UpdatedAt.Equal(*issue.CreatedAt) {
 				edited = &issues.Edited{
-					By: users.User{Login: "Someone"}, //ghUser(issue.Actor), // TODO: Get the actual actor once GitHub API allows it.
+					By: users.User{Login: "Someone"}, //ghV3User(issue.Actor), // TODO: Get the actual actor once GitHub API allows it.
 					At: *issue.UpdatedAt,
 				}
 			}*/
 			// TODO: Consider setting reactions? But it's semi-expensive (to fetch all user details) and not used by app...
 			comment.ID = issueDescriptionCommentID
-			comment.User = ghUser(issue.User)
+			comment.User = ghV3User(issue.User)
 			comment.CreatedAt = *issue.CreatedAt
 			comment.Edited = edited
 			comment.Body = *issue.Body
@@ -712,13 +712,13 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 		var edited *issues.Edited
 		if !ghComment.UpdatedAt.Equal(*ghComment.CreatedAt) {
 			edited = &issues.Edited{
-				By: users.User{Login: "Someone"}, //ghUser(ghComment.Actor), // TODO: Get the actual actor once GitHub API allows it.
+				By: users.User{Login: "Someone"}, //ghV3User(ghComment.Actor), // TODO: Get the actual actor once GitHub API allows it.
 				At: *ghComment.UpdatedAt,
 			}
 		}
 		// TODO: Consider setting reactions? But it's semi-expensive (to fetch all user details) and not used by app...
 		comment.ID = uint64(*ghComment.ID)
-		comment.User = ghUser(ghComment.User)
+		comment.User = ghV3User(ghComment.User)
 		comment.CreatedAt = *ghComment.CreatedAt
 		comment.Edited = edited
 		comment.Body = *ghComment.Body
@@ -820,6 +820,9 @@ type githubqlActor struct {
 	User struct {
 		DatabaseID uint64
 	} `graphql:"...on User"`
+	Bot struct {
+		DatabaseID uint64
+	} `graphql:"...on Bot"`
 	Login     string
 	AvatarURL string `graphql:"avatarUrl(size:96)"`
 	URL       string
@@ -827,20 +830,11 @@ type githubqlActor struct {
 
 func ghActor(actor *githubqlActor) users.User {
 	if actor == nil {
-		// Deleted user, replace with https://github.com/ghost.
-		return users.User{
-			UserSpec: users.UserSpec{
-				ID:     10137,
-				Domain: "github.com",
-			},
-			Login:     "ghost",
-			AvatarURL: "https://avatars3.githubusercontent.com/u/10137?v=4",
-			HTMLURL:   "https://github.com/ghost",
-		}
+		return ghost // Deleted user, replace with https://github.com/ghost.
 	}
 	return users.User{
 		UserSpec: users.UserSpec{
-			ID:     actor.User.DatabaseID,
+			ID:     actor.User.DatabaseID | actor.Bot.DatabaseID,
 			Domain: "github.com",
 		},
 		Login:     actor.Login,
@@ -849,7 +843,32 @@ func ghActor(actor *githubqlActor) users.User {
 	}
 }
 
-func ghUser(user *github.User) users.User {
+type githubqlUser struct {
+	DatabaseID uint64
+	Login      string
+	AvatarURL  string `graphql:"avatarUrl(size:96)"`
+	URL        string
+}
+
+func ghUser(user *githubqlUser) users.User {
+	if user == nil {
+		return ghost // Deleted user, replace with https://github.com/ghost.
+	}
+	return users.User{
+		UserSpec: users.UserSpec{
+			ID:     user.DatabaseID,
+			Domain: "github.com",
+		},
+		Login:     user.Login,
+		AvatarURL: user.AvatarURL,
+		HTMLURL:   user.URL,
+	}
+}
+
+func ghV3User(user *github.User) users.User {
+	if *user.ID == 0 {
+		return ghost // Deleted user, replace with https://github.com/ghost.
+	}
 	return users.User{
 		UserSpec: users.UserSpec{
 			ID:     uint64(*user.ID),
@@ -859,6 +878,17 @@ func ghUser(user *github.User) users.User {
 		AvatarURL: *user.AvatarURL,
 		HTMLURL:   *user.HTMLURL,
 	}
+}
+
+// ghost is https://github.com/ghost, a replacement for deleted users.
+var ghost = users.User{
+	UserSpec: users.UserSpec{
+		ID:     10137,
+		Domain: "github.com",
+	},
+	Login:     "ghost",
+	AvatarURL: "https://avatars3.githubusercontent.com/u/10137?v=4",
+	HTMLURL:   "https://github.com/ghost",
 }
 
 // ghIssueState converts a GitHub IssueState to issues.State.
