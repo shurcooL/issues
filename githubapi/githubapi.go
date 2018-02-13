@@ -212,22 +212,32 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 
 	repo, err := ghRepoSpec(rs)
 	if err != nil {
+		// TODO: Map to 400 Bad Request HTTP error.
 		return nil, err
 	}
-	var comments []issues.Comment
-
+	type comment struct { // Comment fields.
+		Author          *githubqlActor
+		PublishedAt     githubql.DateTime
+		LastEditedAt    *githubql.DateTime
+		Editor          *githubqlActor
+		Body            string
+		ReactionGroups  reactionGroups
+		ViewerCanUpdate bool
+	}
 	var q struct {
 		Repository struct {
 			Issue struct {
-				Author          *githubqlActor
-				PublishedAt     githubql.DateTime
-				LastEditedAt    *githubql.DateTime
-				Editor          *githubqlActor
-				Body            githubql.String
-				ReactionGroups  reactionGroups
-				ViewerCanUpdate githubql.Boolean
-
-				// TODO: Combine with first page of Comments...
+				comment  `graphql:"...@include(if:$firstPage)"` // Fetch the issue description only on first page.
+				Comments struct {
+					Nodes []struct {
+						DatabaseID uint64
+						comment
+					}
+					PageInfo struct {
+						EndCursor   githubql.String
+						HasNextPage githubql.Boolean
+					}
+				} `graphql:"comments(first:100,after:$commentsCursor)"`
 			} `graphql:"issue(number:$issueNumber)"`
 		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
 	}
@@ -235,88 +245,58 @@ func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64
 		"repositoryOwner": githubql.String(repo.Owner),
 		"repositoryName":  githubql.String(repo.Repo),
 		"issueNumber":     githubql.Int(id),
+		"firstPage":       githubql.Boolean(true),
+		"commentsCursor":  (*githubql.String)(nil),
 	}
-	err = s.clV4.Query(ctx, &q, variables)
-	if err != nil {
-		return comments, err
-	}
-	issue := q.Repository.Issue
-	var edited *issues.Edited
-	if issue.LastEditedAt != nil {
-		edited = &issues.Edited{
-			By: ghActor(issue.Editor),
-			At: issue.LastEditedAt.Time,
+	var comments []issues.Comment
+	for {
+		err := s.clV4.Query(ctx, &q, variables)
+		if err != nil {
+			return comments, err
 		}
-	}
-	comments = append(comments, issues.Comment{
-		ID:        issueDescriptionCommentID,
-		User:      ghActor(issue.Author),
-		CreatedAt: issue.PublishedAt.Time,
-		Edited:    edited,
-		Body:      string(issue.Body),
-		Reactions: s.reactions(issue.ReactionGroups),
-		Editable:  bool(issue.ViewerCanUpdate),
-	})
-
-	{
-		var q struct {
-			Repository struct {
-				Issue struct {
-					Comments struct {
-						Nodes []struct {
-							DatabaseID      githubql.Int
-							Author          *githubqlActor
-							PublishedAt     githubql.DateTime
-							LastEditedAt    *githubql.DateTime
-							Editor          *githubqlActor
-							Body            githubql.String
-							ReactionGroups  reactionGroups
-							ViewerCanUpdate githubql.Boolean
-						}
-						PageInfo struct {
-							EndCursor   githubql.String
-							HasNextPage githubql.Boolean
-						}
-					} `graphql:"comments(first:100,after:$commentsCursor)"`
-				} `graphql:"issue(number:$issueNumber)"`
-			} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
-		}
-		variables := map[string]interface{}{
-			"repositoryOwner": githubql.String(repo.Owner),
-			"repositoryName":  githubql.String(repo.Repo),
-			"issueNumber":     githubql.Int(id),
-			"commentsCursor":  (*githubql.String)(nil),
-		}
-		for {
-			err := s.clV4.Query(ctx, &q, variables)
-			if err != nil {
-				return comments, err
-			}
-			for _, comment := range q.Repository.Issue.Comments.Nodes {
-				var edited *issues.Edited
-				if comment.LastEditedAt != nil {
-					edited = &issues.Edited{
-						By: ghActor(comment.Editor),
-						At: comment.LastEditedAt.Time,
-					}
+		if variables["firstPage"].(githubql.Boolean) {
+			issue := q.Repository.Issue.comment // Issue description comment.
+			var edited *issues.Edited
+			if issue.LastEditedAt != nil {
+				edited = &issues.Edited{
+					By: ghActor(issue.Editor),
+					At: issue.LastEditedAt.Time,
 				}
-				comments = append(comments, issues.Comment{
-					ID:        uint64(comment.DatabaseID),
-					User:      ghActor(comment.Author),
-					CreatedAt: comment.PublishedAt.Time,
-					Edited:    edited,
-					Body:      string(comment.Body),
-					Reactions: s.reactions(comment.ReactionGroups),
-					Editable:  bool(comment.ViewerCanUpdate),
-				})
 			}
-			if !q.Repository.Issue.Comments.PageInfo.HasNextPage {
-				break
-			}
-			variables["commentsCursor"] = githubql.NewString(q.Repository.Issue.Comments.PageInfo.EndCursor)
+			comments = append(comments, issues.Comment{
+				ID:        issueDescriptionCommentID,
+				User:      ghActor(issue.Author),
+				CreatedAt: issue.PublishedAt.Time,
+				Edited:    edited,
+				Body:      issue.Body,
+				Reactions: s.reactions(issue.ReactionGroups),
+				Editable:  issue.ViewerCanUpdate,
+			})
 		}
+		for _, comment := range q.Repository.Issue.Comments.Nodes {
+			var edited *issues.Edited
+			if comment.LastEditedAt != nil {
+				edited = &issues.Edited{
+					By: ghActor(comment.Editor),
+					At: comment.LastEditedAt.Time,
+				}
+			}
+			comments = append(comments, issues.Comment{
+				ID:        comment.DatabaseID,
+				User:      ghActor(comment.Author),
+				CreatedAt: comment.PublishedAt.Time,
+				Edited:    edited,
+				Body:      comment.Body,
+				Reactions: s.reactions(comment.ReactionGroups),
+				Editable:  comment.ViewerCanUpdate,
+			})
+		}
+		if !q.Repository.Issue.Comments.PageInfo.HasNextPage {
+			break
+		}
+		variables["firstPage"] = githubql.Boolean(false)
+		variables["commentsCursor"] = githubql.NewString(q.Repository.Issue.Comments.PageInfo.EndCursor)
 	}
-
 	return comments, nil
 }
 
