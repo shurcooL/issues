@@ -975,10 +975,7 @@ type repoSpec struct {
 }
 
 func ghRepoSpec(repo issues.RepoSpec) (repoSpec, error) {
-	// TODO, THINK: Include "github.com/" prefix or not?
-	//              So far I'm leaning towards "yes", because it's more definitive and matches
-	//              local uris that also include host. This way, the host can be checked as part of
-	//              request, rather than kept implicit.
+	// The "github.com/" prefix is expected to be included.
 	ghOwnerRepo := strings.Split(repo.URI, "/")
 	if len(ghOwnerRepo) != 3 || ghOwnerRepo[0] != "github.com" || ghOwnerRepo[1] == "" || ghOwnerRepo[2] == "" {
 		return repoSpec{}, fmt.Errorf(`RepoSpec is not of form "github.com/owner/repo": %q`, repo.URI)
