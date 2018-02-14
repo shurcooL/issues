@@ -687,7 +687,7 @@ func (s service) Create(ctx context.Context, rs issues.RepoSpec, i issues.Issue)
 		Title: *issue.Title,
 		Comment: issues.Comment{
 			ID:        issueDescriptionCommentID,
-			User:      ghV3User(issue.User),
+			User:      ghV3User(*issue.User),
 			CreatedAt: *issue.CreatedAt,
 			Editable:  true, // You can always edit issues you've created.
 		},
@@ -750,7 +750,7 @@ func (s service) Edit(ctx context.Context, rs issues.RepoSpec, id uint64, ir iss
 		Title: *issue.Title,
 		Comment: issues.Comment{
 			ID:        issueDescriptionCommentID,
-			User:      ghV3User(issue.User),
+			User:      ghV3User(*issue.User),
 			CreatedAt: *issue.CreatedAt,
 			Editable:  true, // You can always edit issues you've edited.
 		},
@@ -784,13 +784,13 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 			/* TODO: Get the actual edited information once GitHub API allows it. Can't use issue.UpdatedAt because of false positives, since it includes the entire issue, not just its comment body.
 			if !issue.UpdatedAt.Equal(*issue.CreatedAt) {
 				edited = &issues.Edited{
-					By: users.User{Login: "Someone"}, //ghV3User(issue.Actor), // TODO: Get the actual actor once GitHub API allows it.
+					By: users.User{Login: "Someone"}, //ghV3User(*issue.Actor), // TODO: Get the actual actor once GitHub API allows it.
 					At: *issue.UpdatedAt,
 				}
 			}*/
 			// TODO: Consider setting reactions? But it's semi-expensive (to fetch all user details) and not used by app...
 			comment.ID = issueDescriptionCommentID
-			comment.User = ghV3User(issue.User)
+			comment.User = ghV3User(*issue.User)
 			comment.CreatedAt = *issue.CreatedAt
 			comment.Edited = edited
 			comment.Body = *issue.Body
@@ -885,13 +885,13 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 		var edited *issues.Edited
 		if !ghComment.UpdatedAt.Equal(*ghComment.CreatedAt) {
 			edited = &issues.Edited{
-				By: users.User{Login: "Someone"}, //ghV3User(ghComment.Actor), // TODO: Get the actual actor once GitHub API allows it.
+				By: users.User{Login: "Someone"}, //ghV3User(*ghComment.Actor), // TODO: Get the actual actor once GitHub API allows it.
 				At: *ghComment.UpdatedAt,
 			}
 		}
 		// TODO: Consider setting reactions? But it's semi-expensive (to fetch all user details) and not used by app...
 		comment.ID = uint64(*ghComment.ID)
-		comment.User = ghV3User(ghComment.User)
+		comment.User = ghV3User(*ghComment.User)
 		comment.CreatedAt = *ghComment.CreatedAt
 		comment.Edited = edited
 		comment.Body = *ghComment.Body
@@ -1035,7 +1035,7 @@ func ghUser(user *githubqlUser) users.User {
 	}
 }
 
-func ghV3User(user *github.User) users.User {
+func ghV3User(user github.User) users.User {
 	if *user.ID == 0 {
 		return ghost // Deleted user, replace with https://github.com/ghost.
 	}
