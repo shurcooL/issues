@@ -77,7 +77,7 @@ func htmlURL(repoURI string, issueID uint64, fragment string) string {
 	// TODO: Find a good way to factor out this logic and provide it to issues/fs in a reasonable way.
 	switch {
 	default:
-		htmlURL = fmt.Sprintf("https://%s/issues/%v", repoURI, issueID)
+		htmlURL = fmt.Sprintf("https://%s/...$issues/%v", repoURI, issueID)
 	case repoURI == "dmitri.shuralyov.com/blog":
 		htmlURL = fmt.Sprintf("https://dmitri.shuralyov.com/blog/%v", issueID)
 	case repoURI == "dmitri.shuralyov.com/idiomatic-go":
