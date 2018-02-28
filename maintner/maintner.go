@@ -41,7 +41,7 @@ func (s service) List(_ context.Context, rs issues.RepoSpec, opt issues.IssueLis
 
 	var is []issues.Issue
 	err = repo.ForeachIssue(func(i *maintner.GitHubIssue) error {
-		if i.NotExist {
+		if i.NotExist || i.PullRequest {
 			return nil
 		}
 
@@ -103,7 +103,7 @@ func (s service) Count(_ context.Context, rs issues.RepoSpec, opt issues.IssueLi
 
 	var count uint64
 	err = repo.ForeachIssue(func(issue *maintner.GitHubIssue) error {
-		if issue.NotExist {
+		if issue.NotExist || issue.PullRequest {
 			return nil
 		}
 
@@ -138,7 +138,7 @@ func (s service) Get(_ context.Context, rs issues.RepoSpec, id uint64) (issues.I
 		return issues.Issue{}, fmt.Errorf("repo %v not found", rs)
 	}
 	i := repo.Issue(int32(id))
-	if i == nil || i.NotExist {
+	if i == nil || i.NotExist || i.PullRequest {
 		return issues.Issue{}, os.ErrNotExist
 	}
 
@@ -165,7 +165,7 @@ func (s service) ListComments(_ context.Context, rs issues.RepoSpec, id uint64, 
 		return nil, fmt.Errorf("repo %v not found", rs)
 	}
 	i := repo.Issue(int32(id))
-	if i == nil || i.NotExist {
+	if i == nil || i.NotExist || i.PullRequest {
 		return nil, os.ErrNotExist
 	}
 
@@ -223,7 +223,7 @@ func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, op
 		return nil, fmt.Errorf("repo %v not found", rs)
 	}
 	i := repo.Issue(int32(id))
-	if i == nil || i.NotExist {
+	if i == nil || i.NotExist || i.PullRequest {
 		return nil, os.ErrNotExist
 	}
 
