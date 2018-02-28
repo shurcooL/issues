@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"dmitri.shuralyov.com/state"
 	"github.com/google/go-github/github"
 	"github.com/shurcooL/githubql"
 	"github.com/shurcooL/issues"
@@ -320,10 +321,6 @@ func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, 
 						Typename    string `graphql:"__typename"`
 						ClosedEvent struct {
 							event
-							Commit struct {
-								OID string
-								URL string
-							}
 						} `graphql:"...on ClosedEvent"`
 						ReopenedEvent struct {
 							event
@@ -375,10 +372,7 @@ func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, 
 		case issues.Closed:
 			e.Actor = ghActor(event.ClosedEvent.Actor)
 			e.CreatedAt = event.ClosedEvent.CreatedAt.Time
-			e.Close = issues.Close{
-				CommitID:      event.ClosedEvent.Commit.OID,
-				CommitHTMLURL: event.ClosedEvent.Commit.URL,
-			}
+			e.Close = issues.Close{}
 		case issues.Reopened:
 			e.Actor = ghActor(event.ReopenedEvent.Actor)
 			e.CreatedAt = event.ReopenedEvent.CreatedAt.Time
@@ -458,9 +452,21 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 						} `graphql:"...on IssueComment"`
 						ClosedEvent struct {
 							event
-							Commit struct {
-								OID string
-								URL string
+							Closer struct {
+								Typename    string `graphql:"__typename"`
+								PullRequest struct {
+									State githubql.PullRequestState
+									Title string
+									URL   string
+								} `graphql:"...on PullRequest"`
+								Commit struct {
+									OID     string
+									Message string
+									Author  struct {
+										AvatarURL string `graphql:"avatarUrl(size:96)"`
+									}
+									URL string
+								} `graphql:"...on Commit"`
 							}
 						} `graphql:"...on ClosedEvent"`
 						ReopenedEvent struct {
@@ -559,9 +565,28 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 				case issues.Closed:
 					e.Actor = ghActor(n.ClosedEvent.Actor)
 					e.CreatedAt = n.ClosedEvent.CreatedAt.Time
-					e.Close = issues.Close{
-						CommitID:      n.ClosedEvent.Commit.OID,
-						CommitHTMLURL: n.ClosedEvent.Commit.URL,
+					switch n.ClosedEvent.Closer.Typename {
+					case "PullRequest":
+						pr := n.ClosedEvent.Closer.PullRequest
+						e.Close = issues.Close{
+							Closer: issues.Change{
+								State:   ghPRState(pr.State),
+								Title:   pr.Title,
+								HTMLURL: pr.URL,
+							},
+						}
+					case "Commit":
+						c := n.ClosedEvent.Closer.Commit
+						e.Close = issues.Close{
+							Closer: issues.Commit{
+								SHA:             c.OID,
+								Message:         c.Message,
+								AuthorAvatarURL: c.Author.AvatarURL,
+								HTMLURL:         c.URL,
+							},
+						}
+					default:
+						e.Close = issues.Close{}
 					}
 				case issues.Reopened:
 					e.Actor = ghActor(n.ReopenedEvent.Actor)
@@ -1068,6 +1093,20 @@ func ghIssueState(state githubql.IssueState) issues.State {
 		return issues.OpenState
 	case githubql.IssueStateClosed:
 		return issues.ClosedState
+	default:
+		panic("unreachable")
+	}
+}
+
+// ghPRState converts a GitHub PullRequestState to state.Change.
+func ghPRState(prState githubql.PullRequestState) state.Change {
+	switch prState {
+	case githubql.PullRequestStateOpen:
+		return state.ChangeOpen
+	case githubql.PullRequestStateClosed:
+		return state.ChangeClosed
+	case githubql.PullRequestStateMerged:
+		return state.ChangeMerged
 	default:
 		panic("unreachable")
 	}

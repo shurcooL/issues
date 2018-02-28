@@ -3,6 +3,7 @@ package issues
 import (
 	"time"
 
+	"dmitri.shuralyov.com/state"
 	"github.com/shurcooL/users"
 )
 
@@ -47,8 +48,22 @@ func (et EventType) Valid() bool {
 
 // Close provides details for a Closed event.
 type Close struct {
-	CommitID      string // CommitID is SHA of commit that closed the issue, or empty string if there's no associated commit.
-	CommitHTMLURL string // Optional.
+	Closer interface{} // Change, Commit, nil.
+}
+
+// Change describes a change that closed an issue.
+type Change struct {
+	State   state.Change
+	Title   string
+	HTMLURL string
+}
+
+// Commit describes a commit that closed an issue.
+type Commit struct {
+	SHA             string
+	Message         string
+	AuthorAvatarURL string
+	HTMLURL         string
 }
 
 // Rename provides details for a Renamed event.
