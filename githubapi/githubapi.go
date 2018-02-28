@@ -4,6 +4,7 @@ package githubapi
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -208,214 +209,18 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 	}, nil
 }
 
-// TODO: Deprecate in favor of ListTimeline.
-func (s service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Comment, error) {
-	// TODO: Respect opt.Start and opt.Length, if given.
-
-	repo, err := ghRepoSpec(rs)
-	if err != nil {
-		// TODO: Map to 400 Bad Request HTTP error.
-		return nil, err
-	}
-	type comment struct { // Comment fields.
-		Author          *githubqlActor
-		PublishedAt     githubql.DateTime
-		LastEditedAt    *githubql.DateTime
-		Editor          *githubqlActor
-		Body            string
-		ReactionGroups  reactionGroups
-		ViewerCanUpdate bool
-	}
-	var q struct {
-		Repository struct {
-			Issue struct {
-				comment  `graphql:"...@include(if:$firstPage)"` // Fetch the issue description only on first page.
-				Comments struct {
-					Nodes []struct {
-						DatabaseID uint64
-						comment
-					}
-					PageInfo struct {
-						EndCursor   githubql.String
-						HasNextPage githubql.Boolean
-					}
-				} `graphql:"comments(first:100,after:$commentsCursor)"`
-			} `graphql:"issue(number:$issueNumber)"`
-		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
-	}
-	variables := map[string]interface{}{
-		"repositoryOwner": githubql.String(repo.Owner),
-		"repositoryName":  githubql.String(repo.Repo),
-		"issueNumber":     githubql.Int(id),
-		"firstPage":       githubql.Boolean(true),
-		"commentsCursor":  (*githubql.String)(nil),
-	}
-	var comments []issues.Comment
-	for {
-		err := s.clV4.Query(ctx, &q, variables)
-		if err != nil {
-			return comments, err
-		}
-		if variables["firstPage"].(githubql.Boolean) {
-			issue := q.Repository.Issue.comment // Issue description comment.
-			var edited *issues.Edited
-			if issue.LastEditedAt != nil {
-				edited = &issues.Edited{
-					By: ghActor(issue.Editor),
-					At: issue.LastEditedAt.Time,
-				}
-			}
-			comments = append(comments, issues.Comment{
-				ID:        issueDescriptionCommentID,
-				User:      ghActor(issue.Author),
-				CreatedAt: issue.PublishedAt.Time,
-				Edited:    edited,
-				Body:      issue.Body,
-				Reactions: s.reactions(issue.ReactionGroups),
-				Editable:  issue.ViewerCanUpdate,
-			})
-		}
-		for _, comment := range q.Repository.Issue.Comments.Nodes {
-			var edited *issues.Edited
-			if comment.LastEditedAt != nil {
-				edited = &issues.Edited{
-					By: ghActor(comment.Editor),
-					At: comment.LastEditedAt.Time,
-				}
-			}
-			comments = append(comments, issues.Comment{
-				ID:        comment.DatabaseID,
-				User:      ghActor(comment.Author),
-				CreatedAt: comment.PublishedAt.Time,
-				Edited:    edited,
-				Body:      comment.Body,
-				Reactions: s.reactions(comment.ReactionGroups),
-				Editable:  comment.ViewerCanUpdate,
-			})
-		}
-		if !q.Repository.Issue.Comments.PageInfo.HasNextPage {
-			break
-		}
-		variables["firstPage"] = githubql.Boolean(false)
-		variables["commentsCursor"] = githubql.NewString(q.Repository.Issue.Comments.PageInfo.EndCursor)
-	}
-	return comments, nil
+// ListComments used to list only comments, but isn't implemented anymore.
+//
+// Deprecated: Use ListTimeline instead.
+func (service) ListComments(ctx context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Comment, error) {
+	return nil, errors.New("ListComments is not implemented, use ListTimeline instead")
 }
 
-// TODO: Deprecate in favor of ListTimeline.
-func (s service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
-	repo, err := ghRepoSpec(rs)
-	if err != nil {
-		// TODO: Map to 400 Bad Request HTTP error.
-		return nil, err
-	}
-	type event struct { // Common fields for all events.
-		Actor     *githubqlActor
-		CreatedAt githubql.DateTime
-	}
-	var q struct {
-		Repository struct {
-			Issue struct {
-				Timeline struct {
-					Nodes []struct {
-						Typename    string `graphql:"__typename"`
-						ClosedEvent struct {
-							event
-						} `graphql:"...on ClosedEvent"`
-						ReopenedEvent struct {
-							event
-						} `graphql:"...on ReopenedEvent"`
-						RenamedTitleEvent struct {
-							event
-							CurrentTitle  string
-							PreviousTitle string
-						} `graphql:"...on RenamedTitleEvent"`
-						LabeledEvent struct {
-							event
-							Label struct {
-								Name  string
-								Color string
-							}
-						} `graphql:"...on LabeledEvent"`
-						UnlabeledEvent struct {
-							event
-							Label struct {
-								Name  string
-								Color string
-							}
-						} `graphql:"...on UnlabeledEvent"`
-					}
-				} `graphql:"timeline(first:100)"` // TODO: Paginate?
-			} `graphql:"issue(number:$issueNumber)"`
-		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
-	}
-	variables := map[string]interface{}{
-		"repositoryOwner": githubql.String(repo.Owner),
-		"repositoryName":  githubql.String(repo.Repo),
-		"issueNumber":     githubql.Int(id),
-	}
-	err = s.clV4.Query(ctx, &q, variables)
-	if err != nil {
-		return nil, err
-	}
-	var events []issues.Event
-	for _, event := range q.Repository.Issue.Timeline.Nodes {
-		et := ghEventType(event.Typename)
-		if !et.Valid() {
-			continue
-		}
-		e := issues.Event{
-			//ID:   0, // TODO.
-			Type: et,
-		}
-		switch et {
-		case issues.Closed:
-			e.Actor = ghActor(event.ClosedEvent.Actor)
-			e.CreatedAt = event.ClosedEvent.CreatedAt.Time
-			e.Close = issues.Close{}
-		case issues.Reopened:
-			e.Actor = ghActor(event.ReopenedEvent.Actor)
-			e.CreatedAt = event.ReopenedEvent.CreatedAt.Time
-		case issues.Renamed:
-			e.Actor = ghActor(event.RenamedTitleEvent.Actor)
-			e.CreatedAt = event.RenamedTitleEvent.CreatedAt.Time
-			e.Rename = &issues.Rename{
-				From: event.RenamedTitleEvent.PreviousTitle,
-				To:   event.RenamedTitleEvent.CurrentTitle,
-			}
-		case issues.Labeled:
-			e.Actor = ghActor(event.LabeledEvent.Actor)
-			e.CreatedAt = event.LabeledEvent.CreatedAt.Time
-			e.Label = &issues.Label{
-				Name:  event.LabeledEvent.Label.Name,
-				Color: ghColor(event.LabeledEvent.Label.Color),
-			}
-		case issues.Unlabeled:
-			e.Actor = ghActor(event.UnlabeledEvent.Actor)
-			e.CreatedAt = event.UnlabeledEvent.CreatedAt.Time
-			e.Label = &issues.Label{
-				Name:  event.UnlabeledEvent.Label.Name,
-				Color: ghColor(event.UnlabeledEvent.Label.Color),
-			}
-		default:
-			continue
-		}
-		events = append(events, e)
-	}
-	// We can't just delegate pagination to GitHub because our events don't match up 1:1,
-	// we want to skip IssueComment in the timeline, etc.
-	if opt != nil {
-		start := opt.Start
-		if start > len(events) {
-			start = len(events)
-		}
-		end := opt.Start + opt.Length
-		if end > len(events) {
-			end = len(events)
-		}
-		events = events[start:end]
-	}
-	return events, nil
+// ListEvents used to list only events, but isn't implemented anymore.
+//
+// Deprecated: Use ListTimeline instead.
+func (service) ListEvents(ctx context.Context, rs issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
+	return nil, errors.New("ListEvents is not implemented, use ListTimeline instead")
 }
 
 func (service) IsTimelineLister(issues.RepoSpec) bool { return true }
