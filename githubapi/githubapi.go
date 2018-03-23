@@ -16,27 +16,18 @@ import (
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/notifications"
 	"github.com/shurcooL/users"
-	ghusers "github.com/shurcooL/users/githubapi"
 )
 
 // NewService creates a GitHub-backed issues.Service using given GitHub clients.
 // It uses notifications service, if not nil. At this time it infers the current user
-// from the client (its authentication info), and cannot be used to serve multiple users.
-func NewService(clientV3 *github.Client, clientV4 *githubql.Client, notifications notifications.ExternalService) (issues.Service, error) {
-	users, err := ghusers.NewService(clientV3)
-	if err != nil {
-		return nil, err
-	}
-	currentUser, err := users.GetAuthenticated(context.Background())
-	if err != nil {
-		return nil, err
-	}
+// from GitHub clients (their authentication info), and cannot be used to serve multiple users.
+// Both GitHub clients must use same authentication info.
+func NewService(clientV3 *github.Client, clientV4 *githubql.Client, notifications notifications.ExternalService) issues.Service {
 	return service{
 		clV3:          clientV3,
 		clV4:          clientV4,
 		notifications: notifications,
-		currentUser:   currentUser,
-	}, nil
+	}
 }
 
 type service struct {
@@ -45,8 +36,6 @@ type service struct {
 
 	// notifications may be nil if there's no notifications service.
 	notifications notifications.ExternalService
-
-	currentUser users.User
 }
 
 // We use 0 as a special ID for the comment that is the issue description. This comment is edited differently.
@@ -187,12 +176,10 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 		return issues.Issue{}, err
 	}
 
-	if s.currentUser.ID != 0 {
-		// Mark as read.
-		err = s.markRead(ctx, rs, id)
-		if err != nil {
-			log.Println("service.Get: failed to markRead:", err)
-		}
+	// Mark as read. (We know there's an authenticated user since we're using GitHub GraphQL API v4 above.)
+	err = s.markRead(ctx, rs, id)
+	if err != nil {
+		log.Println("service.Get: failed to markRead:", err)
 	}
 
 	// TODO: Eliminate comment body properties from issues.Issue. It's missing increasingly more fields, like Edited, etc.
@@ -304,6 +291,7 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 				} `graphql:"timeline(first:100,after:$timelineCursor)"`
 			} `graphql:"issue(number:$issueNumber)"`
 		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
+		Viewer githubqlUser
 	}
 	variables := map[string]interface{}{
 		"repositoryOwner": githubql.String(repo.Owner),
@@ -333,7 +321,7 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 				CreatedAt: issue.PublishedAt.Time,
 				Edited:    edited,
 				Body:      issue.Body,
-				Reactions: s.reactions(issue.ReactionGroups),
+				Reactions: ghReactions(issue.ReactionGroups, ghUser(&q.Viewer)),
 				Editable:  issue.ViewerCanUpdate,
 			})
 		}
@@ -354,7 +342,7 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 					CreatedAt: comment.PublishedAt.Time,
 					Edited:    edited,
 					Body:      comment.Body,
-					Reactions: s.reactions(comment.ReactionGroups),
+					Reactions: ghReactions(comment.ReactionGroups, ghUser(&q.Viewer)),
 					Editable:  comment.ViewerCanUpdate,
 				})
 			default:
@@ -527,19 +515,41 @@ func (s service) Create(ctx context.Context, rs issues.RepoSpec, i issues.Issue)
 func (s service) Edit(ctx context.Context, rs issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
 	// TODO: Why Validate here but not Create, etc.? Figure this out. Might only be needed in fs implementation.
 	if err := ir.Validate(); err != nil {
+		// TODO: Map to 400 Bad Request HTTP error.
 		return issues.Issue{}, nil, err
 	}
 	repo, err := ghRepoSpec(rs)
 	if err != nil {
+		// TODO: Map to 400 Bad Request HTTP error.
 		return issues.Issue{}, nil, err
 	}
+
+	// Fetch issue state and title before the edit, as well as current user.
+	var q struct {
+		Repository struct {
+			Issue struct {
+				State githubql.IssueState
+				Title string
+			} `graphql:"issue(number:$issueNumber)"`
+		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
+		Viewer githubqlUser
+	}
+	variables := map[string]interface{}{
+		"repositoryOwner": githubql.String(repo.Owner),
+		"repositoryName":  githubql.String(repo.Repo),
+		"issueNumber":     githubql.Int(id),
+	}
+	err = s.clV4.Query(ctx, &q, variables)
+	if err != nil {
+		return issues.Issue{}, nil, err
+	}
+	beforeEdit := q.Repository.Issue
 
 	ghIR := github.IssueRequest{
 		Title: ir.Title,
 	}
 	if ir.State != nil {
-		state := string(*ir.State)
-		ghIR.State = &state
+		ghIR.State = github.String(string(*ir.State))
 	}
 
 	issue, _, err := s.clV3.Issues.Edit(ctx, repo.Owner, repo.Repo, int(id), &ghIR)
@@ -550,22 +560,22 @@ func (s service) Edit(ctx context.Context, rs issues.RepoSpec, id uint64, ir iss
 	// GitHub API doesn't return the event that will be generated as a result, so we predict what it'll be.
 	event := issues.Event{
 		// TODO: Figure out if event ID needs to be set, and if so, how to best do that...
-		Actor:     s.currentUser, // Only logged in users can edit, so we're guaranteed to have a current user.
+		Actor:     ghUser(&q.Viewer),
 		CreatedAt: time.Now().UTC(),
 	}
 	// TODO: A single edit operation can result in multiple events, we should emit multiple events in such cases. We're currently emitting at most one event.
 	switch {
-	case ir.State != nil: // TODO: && *ir.State != origState:
+	case ir.State != nil && *ir.State != ghIssueState(beforeEdit.State):
 		switch *ir.State {
 		case issues.OpenState:
 			event.Type = issues.Reopened
 		case issues.ClosedState:
 			event.Type = issues.Closed
 		}
-	case ir.Title != nil: // TODO: && *ir.Title != origTitle:
+	case ir.Title != nil && *ir.Title != beforeEdit.Title:
 		event.Type = issues.Renamed
 		event.Rename = &issues.Rename{
-			From: "", // TODO: origTitle,
+			From: beforeEdit.Title,
 			To:   *ir.Title,
 		}
 	}
@@ -642,6 +652,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 						} `graphql:"reactions(content:$reactionContent)"`
 					} `graphql:"issue(number:$issueNumber)"`
 				} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
+				Viewer githubqlUser
 			}
 			variables := map[string]interface{}{
 				"repositoryOwner": githubql.String(repo.Owner),
@@ -694,7 +705,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 			}
 			// TODO: Consider setting other fields? But it's semi-expensive (another API call) and not used by app...
 			//       Actually, now that using GraphQL, no longer that expensive (can be same API call).
-			comment.Reactions = s.reactions(rgs)
+			comment.Reactions = ghReactions(rgs, ghUser(&q.Viewer))
 		}
 
 		return comment, nil
@@ -743,6 +754,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 					} `graphql:"reactions(content:$reactionContent)"`
 				} `graphql:"...on IssueComment"`
 			} `graphql:"node(id:$commentID)"`
+			Viewer githubqlUser
 		}
 		variables := map[string]interface{}{
 			"commentID":       commentID,
@@ -793,7 +805,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 		}
 		// TODO: Consider setting other fields? But it's semi-expensive (another API call) and not used by app...
 		//       Actually, now that using GraphQL, no longer that expensive (can be same API call).
-		comment.Reactions = s.reactions(rgs)
+		comment.Reactions = ghReactions(rgs, ghUser(&q.Viewer))
 	}
 
 	return comment, nil

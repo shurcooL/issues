@@ -17,28 +17,28 @@ type reactionGroups []struct {
 	ViewerHasReacted bool
 }
 
-// reactions converts []githubql.ReactionGroup to []reactions.Reaction.
-func (s service) reactions(rgs reactionGroups) []reactions.Reaction {
+// ghReactions converts []githubql.ReactionGroup to []reactions.Reaction.
+func ghReactions(rgs reactionGroups, viewer users.User) []reactions.Reaction {
 	var rs []reactions.Reaction
 	for _, rg := range rgs {
 		if rg.Users.TotalCount == 0 {
 			continue
 		}
 
-		// Only return the details of first few users and authed user.
+		// Only return the details of first few users and viewer.
 		var us []users.User
-		addedAuthedUser := false
+		addedViewer := false
 		for i := 0; i < rg.Users.TotalCount; i++ {
 			if i < len(rg.Users.Nodes) {
 				user := ghUser(rg.Users.Nodes[i])
 				us = append(us, user)
-				if s.currentUser.ID != 0 && user.UserSpec == s.currentUser.UserSpec {
-					addedAuthedUser = true
+				if user.UserSpec == viewer.UserSpec {
+					addedViewer = true
 				}
 			} else if i == len(rg.Users.Nodes) {
-				// Add authed user last if they've reacted, but haven't been added already.
-				if rg.ViewerHasReacted && !addedAuthedUser {
-					us = append(us, s.currentUser)
+				// Add viewer last if they've reacted, but haven't been added already.
+				if rg.ViewerHasReacted && !addedViewer {
+					us = append(us, viewer)
 				} else {
 					us = append(us, users.User{})
 				}
