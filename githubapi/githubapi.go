@@ -716,7 +716,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 	// Apply edits.
 	if cr.Body != nil {
 		// GitHub API uses comment ID and doesn't need issue ID. Comment IDs are unique per repo (rather than per issue).
-		ghComment, _, err := s.clV3.Issues.EditComment(ctx, repo.Owner, repo.Repo, int(cr.ID), &github.IssueComment{
+		ghComment, _, err := s.clV3.Issues.EditComment(ctx, repo.Owner, repo.Repo, int64(cr.ID), &github.IssueComment{
 			Body: cr.Body,
 		})
 		if err != nil {
