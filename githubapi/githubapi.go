@@ -10,8 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"dmitri.shuralyov.com/route/github"
 	"dmitri.shuralyov.com/state"
-	"github.com/google/go-github/github"
+	githubv3 "github.com/google/go-github/github"
 	"github.com/shurcooL/githubql"
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/notifications"
@@ -22,17 +23,24 @@ import (
 // It uses notifications service, if not nil. At this time it infers the current user
 // from GitHub clients (their authentication info), and cannot be used to serve multiple users.
 // Both GitHub clients must use same authentication info.
-func NewService(clientV3 *github.Client, clientV4 *githubql.Client, notifications notifications.ExternalService) issues.Service {
+//
+// If router is nil, github.DotCom router is used, which links to subjects on github.com.
+func NewService(clientV3 *githubv3.Client, clientV4 *githubql.Client, notifications notifications.ExternalService, router github.Router) issues.Service {
+	if router == nil {
+		router = github.DotCom{}
+	}
 	return service{
 		clV3:          clientV3,
 		clV4:          clientV4,
+		rtr:           router,
 		notifications: notifications,
 	}
 }
 
 type service struct {
-	clV3 *github.Client   // GitHub REST API v3 client.
+	clV3 *githubv3.Client // GitHub REST API v3 client.
 	clV4 *githubql.Client // GitHub GraphQL API v4 client.
+	rtr  github.Router
 
 	// notifications may be nil if there's no notifications service.
 	notifications notifications.ExternalService
@@ -247,9 +255,13 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 							Closer struct {
 								Typename    string `graphql:"__typename"`
 								PullRequest struct {
-									State githubql.PullRequestState
-									Title string
-									URL   string
+									State      githubql.PullRequestState
+									Title      string
+									Repository struct {
+										Owner struct{ Login string }
+										Name  string
+									}
+									Number uint64
 								} `graphql:"...on PullRequest"`
 								Commit struct {
 									OID     string
@@ -365,7 +377,7 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 							Closer: issues.Change{
 								State:   ghPRState(pr.State),
 								Title:   pr.Title,
-								HTMLURL: pr.URL,
+								HTMLURL: s.rtr.PullRequestURL(ctx, pr.Repository.Owner.Login, pr.Repository.Name, pr.Number),
 							},
 						}
 					case "Commit":
@@ -491,7 +503,7 @@ func (s service) Create(ctx context.Context, rs issues.RepoSpec, i issues.Issue)
 	if err != nil {
 		return issues.Issue{}, err
 	}
-	issue, _, err := s.clV3.Issues.Create(ctx, repo.Owner, repo.Repo, &github.IssueRequest{
+	issue, _, err := s.clV3.Issues.Create(ctx, repo.Owner, repo.Repo, &githubv3.IssueRequest{
 		Title: &i.Title,
 		Body:  &i.Body,
 	})
@@ -545,11 +557,11 @@ func (s service) Edit(ctx context.Context, rs issues.RepoSpec, id uint64, ir iss
 	}
 	beforeEdit := q.Repository.Issue
 
-	ghIR := github.IssueRequest{
+	ghIR := githubv3.IssueRequest{
 		Title: ir.Title,
 	}
 	if ir.State != nil {
-		ghIR.State = github.String(string(*ir.State))
+		ghIR.State = githubv3.String(string(*ir.State))
 	}
 
 	issue, _, err := s.clV3.Issues.Edit(ctx, repo.Owner, repo.Repo, int(id), &ghIR)
@@ -613,7 +625,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 		// Apply edits.
 		if cr.Body != nil {
 			// Use Issues.Edit() API to edit comment 0 (the issue description).
-			issue, _, err := s.clV3.Issues.Edit(ctx, repo.Owner, repo.Repo, int(id), &github.IssueRequest{
+			issue, _, err := s.clV3.Issues.Edit(ctx, repo.Owner, repo.Repo, int(id), &githubv3.IssueRequest{
 				Body: cr.Body,
 			})
 			if err != nil {
@@ -716,7 +728,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 	// Apply edits.
 	if cr.Body != nil {
 		// GitHub API uses comment ID and doesn't need issue ID. Comment IDs are unique per repo (rather than per issue).
-		ghComment, _, err := s.clV3.Issues.EditComment(ctx, repo.Owner, repo.Repo, int64(cr.ID), &github.IssueComment{
+		ghComment, _, err := s.clV3.Issues.EditComment(ctx, repo.Owner, repo.Repo, int64(cr.ID), &githubv3.IssueComment{
 			Body: cr.Body,
 		})
 		if err != nil {
@@ -877,7 +889,7 @@ func ghUser(user *githubqlUser) users.User {
 	}
 }
 
-func ghV3User(user github.User) users.User {
+func ghV3User(user githubv3.User) users.User {
 	if *user.ID == 0 {
 		return ghost // Deleted user, replace with https://github.com/ghost.
 	}
