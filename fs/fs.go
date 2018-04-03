@@ -252,6 +252,7 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 			Actor:     s.user(ctx, actor),
 			CreatedAt: event.CreatedAt,
 			Type:      event.Type,
+			Close:     event.Close.Close(),
 			Rename:    event.Rename,
 			Label:     label,
 		})
