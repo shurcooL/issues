@@ -166,7 +166,7 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 		Comment: issues.Comment{
 			User:      s.user(ctx, author),
 			CreatedAt: issue.CreatedAt,
-			Editable:  nil == canEdit(ctx, currentUser, issue.Author),
+			Editable:  nil == canEdit(currentUser, issue.Author),
 		},
 		Replies: len(comments) - 1,
 	}, nil
@@ -218,7 +218,7 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 			Edited:    edited,
 			Body:      comment.Body,
 			Reactions: rs,
-			Editable:  nil == canEdit(ctx, currentUser, comment.Author),
+			Editable:  nil == canEdit(currentUser, comment.Author),
 		})
 	}
 
@@ -411,7 +411,7 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 
 // canEdit returns nil error if currentUser is authorized to edit an entry created by author.
 // It returns os.ErrPermission or an error that happened in other cases.
-func canEdit(ctx context.Context, currentUser users.User, author userSpec) error {
+func canEdit(currentUser users.User, author userSpec) error {
 	if currentUser.ID == 0 {
 		// Not logged in, cannot edit anything.
 		return os.ErrPermission
@@ -460,7 +460,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}
 
 	// Authorization check.
-	if err := canEdit(ctx, currentUser, issue.Author); err != nil {
+	if err := canEdit(currentUser, issue.Author); err != nil {
 		return issues.Issue{}, nil, err
 	}
 
@@ -586,7 +586,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		// Authorization check.
 		switch requiresEdit {
 		case true:
-			if err := canEdit(ctx, currentUser, issue.Author); err != nil {
+			if err := canEdit(currentUser, issue.Author); err != nil {
 				return issues.Comment{}, err
 			}
 		case false:
@@ -671,7 +671,7 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	// Authorization check.
 	switch requiresEdit {
 	case true:
-		if err := canEdit(ctx, currentUser, comment.Author); err != nil {
+		if err := canEdit(currentUser, comment.Author); err != nil {
 			return issues.Comment{}, err
 		}
 	case false:
