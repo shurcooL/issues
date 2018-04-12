@@ -65,7 +65,7 @@ func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueL
 		states = nil // No states to filter the issues by.
 	default:
 		// TODO: Map to 400 Bad Request HTTP error.
-		return nil, fmt.Errorf("opt.State has unsupported value %q", opt.State)
+		return nil, fmt.Errorf("invalid issues.IssueListOptions.State value: %q", opt.State)
 	}
 	var q struct {
 		Repository struct {
@@ -138,7 +138,7 @@ func (s service) Count(ctx context.Context, rs issues.RepoSpec, opt issues.Issue
 		states = nil // No states to filter the issues by.
 	default:
 		// TODO: Map to 400 Bad Request HTTP error.
-		return 0, fmt.Errorf("opt.State has unsupported value %q", opt.State)
+		return 0, fmt.Errorf("invalid issues.IssueListOptions.State value: %q", opt.State)
 	}
 	var q struct {
 		Repository struct {

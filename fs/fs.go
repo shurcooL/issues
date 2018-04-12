@@ -42,6 +42,10 @@ type service struct {
 }
 
 func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
+	if opt.State != issues.StateFilter(issues.OpenState) && opt.State != issues.StateFilter(issues.ClosedState) && opt.State != issues.AllStates {
+		return nil, fmt.Errorf("invalid issues.IssueListOptions.State value: %q", opt.State) // TODO: Map to 400 Bad Request HTTP error.
+	}
+
 	var is []issues.Issue
 
 	dirs, err := readDirIDs(ctx, s.fs, issuesDir(repo))
@@ -95,6 +99,10 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 }
 
 func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
+	if opt.State != issues.StateFilter(issues.OpenState) && opt.State != issues.StateFilter(issues.ClosedState) && opt.State != issues.AllStates {
+		return 0, fmt.Errorf("invalid issues.IssueListOptions.State value: %q", opt.State) // TODO: Map to 400 Bad Request HTTP error.
+	}
+
 	var count uint64
 
 	dirs, err := readDirIDs(ctx, s.fs, issuesDir(repo))
@@ -783,7 +791,7 @@ reactionsLoop:
 			case reacted == -1:
 				// Add this reaction.
 				if reactionsFromUser >= 20 {
-					// TODO: Propagate this error as 400 Bad Request to frontend.
+					// TODO: Map to 400 Bad Request HTTP error.
 					return errors.New("too many reactions from same user")
 				}
 				c.Reactions[i].Authors = append(c.Reactions[i].Authors, fromUserSpec(u))
@@ -804,7 +812,7 @@ reactionsLoop:
 	// If we get here, this is the first reaction of its kind.
 	// Add it to the end of the list.
 	if reactionsFromUser >= 20 {
-		// TODO: Propagate this error as 400 Bad Request to frontend.
+		// TODO: Map to 400 Bad Request HTTP error.
 		return errors.New("too many reactions from same user")
 	}
 	c.Reactions = append(c.Reactions,
