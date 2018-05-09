@@ -13,7 +13,7 @@ import (
 	"dmitri.shuralyov.com/route/github"
 	"dmitri.shuralyov.com/state"
 	githubv3 "github.com/google/go-github/github"
-	"github.com/shurcooL/githubql"
+	"github.com/shurcooL/githubv4"
 	"github.com/shurcooL/issues"
 	"github.com/shurcooL/notifications"
 	"github.com/shurcooL/users"
@@ -25,7 +25,7 @@ import (
 // Both GitHub clients must use same authentication info.
 //
 // If router is nil, github.DotCom router is used, which links to subjects on github.com.
-func NewService(clientV3 *githubv3.Client, clientV4 *githubql.Client, notifications notifications.ExternalService, router github.Router) issues.Service {
+func NewService(clientV3 *githubv3.Client, clientV4 *githubv4.Client, notifications notifications.ExternalService, router github.Router) issues.Service {
 	if router == nil {
 		router = github.DotCom{}
 	}
@@ -39,7 +39,7 @@ func NewService(clientV3 *githubv3.Client, clientV4 *githubql.Client, notificati
 
 type service struct {
 	clV3 *githubv3.Client // GitHub REST API v3 client.
-	clV4 *githubql.Client // GitHub GraphQL API v4 client.
+	clV4 *githubv4.Client // GitHub GraphQL API v4 client.
 	rtr  github.Router
 
 	// notifications may be nil if there's no notifications service.
@@ -55,12 +55,12 @@ func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueL
 		// TODO: Map to 400 Bad Request HTTP error.
 		return nil, err
 	}
-	var states []githubql.IssueState
+	var states []githubv4.IssueState
 	switch opt.State {
 	case issues.StateFilter(issues.OpenState):
-		states = []githubql.IssueState{githubql.IssueStateOpen}
+		states = []githubv4.IssueState{githubv4.IssueStateOpen}
 	case issues.StateFilter(issues.ClosedState):
-		states = []githubql.IssueState{githubql.IssueStateClosed}
+		states = []githubv4.IssueState{githubv4.IssueStateClosed}
 	case issues.AllStates:
 		states = nil // No states to filter the issues by.
 	default:
@@ -72,7 +72,7 @@ func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueL
 			Issues struct {
 				Nodes []struct {
 					Number uint64
-					State  githubql.IssueState
+					State  githubv4.IssueState
 					Title  string
 					Labels struct {
 						Nodes []struct {
@@ -80,8 +80,8 @@ func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueL
 							Color string
 						}
 					} `graphql:"labels(first:100)"`
-					Author    *githubqlActor
-					CreatedAt githubql.DateTime
+					Author    *githubV4Actor
+					CreatedAt githubv4.DateTime
 					Comments  struct {
 						TotalCount int
 					}
@@ -90,8 +90,8 @@ func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueL
 		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
 	}
 	variables := map[string]interface{}{
-		"repositoryOwner": githubql.String(repo.Owner),
-		"repositoryName":  githubql.String(repo.Repo),
+		"repositoryOwner": githubv4.String(repo.Owner),
+		"repositoryName":  githubv4.String(repo.Repo),
 		"issuesStates":    states,
 	}
 	err = s.clV4.Query(ctx, &q, variables)
@@ -128,12 +128,12 @@ func (s service) Count(ctx context.Context, rs issues.RepoSpec, opt issues.Issue
 		// TODO: Map to 400 Bad Request HTTP error.
 		return 0, err
 	}
-	var states []githubql.IssueState
+	var states []githubv4.IssueState
 	switch opt.State {
 	case issues.StateFilter(issues.OpenState):
-		states = []githubql.IssueState{githubql.IssueStateOpen}
+		states = []githubv4.IssueState{githubv4.IssueStateOpen}
 	case issues.StateFilter(issues.ClosedState):
-		states = []githubql.IssueState{githubql.IssueStateClosed}
+		states = []githubv4.IssueState{githubv4.IssueStateClosed}
 	case issues.AllStates:
 		states = nil // No states to filter the issues by.
 	default:
@@ -148,8 +148,8 @@ func (s service) Count(ctx context.Context, rs issues.RepoSpec, opt issues.Issue
 		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
 	}
 	variables := map[string]interface{}{
-		"repositoryOwner": githubql.String(repo.Owner),
-		"repositoryName":  githubql.String(repo.Repo),
+		"repositoryOwner": githubv4.String(repo.Owner),
+		"repositoryName":  githubv4.String(repo.Repo),
 		"issuesStates":    states,
 	}
 	err = s.clV4.Query(ctx, &q, variables)
@@ -166,18 +166,18 @@ func (s service) Get(ctx context.Context, rs issues.RepoSpec, id uint64) (issues
 		Repository struct {
 			Issue struct {
 				Number          uint64
-				State           githubql.IssueState
+				State           githubv4.IssueState
 				Title           string
-				Author          *githubqlActor
-				CreatedAt       githubql.DateTime
-				ViewerCanUpdate githubql.Boolean
+				Author          *githubV4Actor
+				CreatedAt       githubv4.DateTime
+				ViewerCanUpdate githubv4.Boolean
 			} `graphql:"issue(number:$issueNumber)"`
 		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
 	}
 	variables := map[string]interface{}{
-		"repositoryOwner": githubql.String(repo.Owner),
-		"repositoryName":  githubql.String(repo.Repo),
-		"issueNumber":     githubql.Int(id),
+		"repositoryOwner": githubv4.String(repo.Owner),
+		"repositoryName":  githubv4.String(repo.Repo),
+		"issueNumber":     githubv4.Int(id),
 	}
 	err = s.clV4.Query(ctx, &q, variables)
 	if err != nil {
@@ -227,17 +227,17 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 		return nil, err
 	}
 	type comment struct { // Comment fields.
-		Author          *githubqlActor
-		PublishedAt     githubql.DateTime
-		LastEditedAt    *githubql.DateTime
-		Editor          *githubqlActor
+		Author          *githubV4Actor
+		PublishedAt     githubv4.DateTime
+		LastEditedAt    *githubv4.DateTime
+		Editor          *githubV4Actor
 		Body            string
 		ReactionGroups  reactionGroups
 		ViewerCanUpdate bool
 	}
 	type event struct { // Common fields for all events.
-		Actor     *githubqlActor
-		CreatedAt githubql.DateTime
+		Actor     *githubV4Actor
+		CreatedAt githubv4.DateTime
 	}
 	var q struct {
 		Repository struct {
@@ -255,7 +255,7 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 							Closer struct {
 								Typename    string `graphql:"__typename"`
 								PullRequest struct {
-									State      githubql.PullRequestState
+									State      githubv4.PullRequestState
 									Title      string
 									Repository struct {
 										Owner struct{ Login string }
@@ -297,20 +297,20 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 						} `graphql:"...on UnlabeledEvent"`
 					}
 					PageInfo struct {
-						EndCursor   githubql.String
-						HasNextPage githubql.Boolean
+						EndCursor   githubv4.String
+						HasNextPage githubv4.Boolean
 					}
 				} `graphql:"timeline(first:100,after:$timelineCursor)"`
 			} `graphql:"issue(number:$issueNumber)"`
 		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
-		Viewer githubqlUser
+		Viewer githubV4User
 	}
 	variables := map[string]interface{}{
-		"repositoryOwner": githubql.String(repo.Owner),
-		"repositoryName":  githubql.String(repo.Repo),
-		"issueNumber":     githubql.Int(id),
-		"firstPage":       githubql.Boolean(true),
-		"timelineCursor":  (*githubql.String)(nil),
+		"repositoryOwner": githubv4.String(repo.Owner),
+		"repositoryName":  githubv4.String(repo.Repo),
+		"issueNumber":     githubv4.Int(id),
+		"firstPage":       githubv4.Boolean(true),
+		"timelineCursor":  (*githubv4.String)(nil),
 	}
 	var timeline []interface{} // Of type issues.Comment and issues.Event.
 	for {
@@ -318,7 +318,7 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 		if err != nil {
 			return timeline, err
 		}
-		if variables["firstPage"].(githubql.Boolean) {
+		if variables["firstPage"].(githubv4.Boolean) {
 			issue := q.Repository.Issue.comment // Issue description comment.
 			var edited *issues.Edited
 			if issue.LastEditedAt != nil {
@@ -426,8 +426,8 @@ func (s service) ListTimeline(ctx context.Context, rs issues.RepoSpec, id uint64
 		if !q.Repository.Issue.Timeline.PageInfo.HasNextPage {
 			break
 		}
-		variables["firstPage"] = githubql.Boolean(false)
-		variables["timelineCursor"] = githubql.NewString(q.Repository.Issue.Timeline.PageInfo.EndCursor)
+		variables["firstPage"] = githubv4.Boolean(false)
+		variables["timelineCursor"] = githubv4.NewString(q.Repository.Issue.Timeline.PageInfo.EndCursor)
 	}
 	// We can't just delegate pagination to GitHub because our timeline items may not match up 1:1,
 	// e.g., we want to skip Commit in the timeline, etc. (At least for now; may reconsider later.)
@@ -454,14 +454,14 @@ func (s service) CreateComment(ctx context.Context, rs issues.RepoSpec, id uint6
 	var q struct {
 		Repository struct {
 			Issue struct {
-				ID githubql.ID
+				ID githubv4.ID
 			} `graphql:"issue(number:$issueNumber)"`
 		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
 	}
 	variables := map[string]interface{}{
-		"repositoryOwner": githubql.String(repo.Owner),
-		"repositoryName":  githubql.String(repo.Repo),
-		"issueNumber":     githubql.Int(id),
+		"repositoryOwner": githubv4.String(repo.Owner),
+		"repositoryName":  githubv4.String(repo.Repo),
+		"issueNumber":     githubv4.Int(id),
 	}
 	err = s.clV4.Query(ctx, &q, variables)
 	if err != nil {
@@ -471,18 +471,18 @@ func (s service) CreateComment(ctx context.Context, rs issues.RepoSpec, id uint6
 		AddComment struct {
 			CommentEdge struct {
 				Node struct {
-					DatabaseID      githubql.Int
-					Author          *githubqlActor
-					PublishedAt     githubql.DateTime
-					Body            githubql.String
-					ViewerCanUpdate githubql.Boolean
+					DatabaseID      githubv4.Int
+					Author          *githubV4Actor
+					PublishedAt     githubv4.DateTime
+					Body            githubv4.String
+					ViewerCanUpdate githubv4.Boolean
 				}
 			}
 		} `graphql:"addComment(input:$input)"`
 	}
-	input := githubql.AddCommentInput{
+	input := githubv4.AddCommentInput{
 		SubjectID: q.Repository.Issue.ID,
-		Body:      githubql.String(c.Body),
+		Body:      githubv4.String(c.Body),
 	}
 	err = s.clV4.Mutate(ctx, &m, input, nil)
 	if err != nil {
@@ -540,16 +540,16 @@ func (s service) Edit(ctx context.Context, rs issues.RepoSpec, id uint64, ir iss
 	var q struct {
 		Repository struct {
 			Issue struct {
-				State githubql.IssueState
+				State githubv4.IssueState
 				Title string
 			} `graphql:"issue(number:$issueNumber)"`
 		} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
-		Viewer githubqlUser
+		Viewer githubV4User
 	}
 	variables := map[string]interface{}{
-		"repositoryOwner": githubql.String(repo.Owner),
-		"repositoryName":  githubql.String(repo.Repo),
-		"issueNumber":     githubql.Int(id),
+		"repositoryOwner": githubv4.String(repo.Owner),
+		"repositoryName":  githubv4.String(repo.Repo),
+		"issueNumber":     githubv4.Int(id),
 	}
 	err = s.clV4.Query(ctx, &q, variables)
 	if err != nil {
@@ -658,18 +658,18 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 			var q struct {
 				Repository struct {
 					Issue struct {
-						ID        githubql.ID
+						ID        githubv4.ID
 						Reactions struct {
-							ViewerHasReacted githubql.Boolean
+							ViewerHasReacted githubv4.Boolean
 						} `graphql:"reactions(content:$reactionContent)"`
 					} `graphql:"issue(number:$issueNumber)"`
 				} `graphql:"repository(owner:$repositoryOwner,name:$repositoryName)"`
-				Viewer githubqlUser
+				Viewer githubV4User
 			}
 			variables := map[string]interface{}{
-				"repositoryOwner": githubql.String(repo.Owner),
-				"repositoryName":  githubql.String(repo.Repo),
-				"issueNumber":     githubql.Int(id),
+				"repositoryOwner": githubv4.String(repo.Owner),
+				"repositoryName":  githubv4.String(repo.Repo),
+				"issueNumber":     githubv4.Int(id),
 				"reactionContent": reactionContent,
 			}
 			err = s.clV4.Query(ctx, &q, variables)
@@ -687,7 +687,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 						}
 					} `graphql:"addReaction(input:$input)"`
 				}
-				input := githubql.AddReactionInput{
+				input := githubv4.AddReactionInput{
 					SubjectID: q.Repository.Issue.ID,
 					Content:   reactionContent,
 				}
@@ -705,7 +705,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 						}
 					} `graphql:"removeReaction(input:$input)"`
 				}
-				input := githubql.RemoveReactionInput{
+				input := githubv4.RemoveReactionInput{
 					SubjectID: q.Repository.Issue.ID,
 					Content:   reactionContent,
 				}
@@ -755,18 +755,18 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 		if err != nil {
 			return issues.Comment{}, err
 		}
-		commentID := githubql.ID(base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("012:IssueComment%d", cr.ID)))) // HACK, TODO: Confirm StdEncoding vs URLEncoding.
+		commentID := githubv4.ID(base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("012:IssueComment%d", cr.ID)))) // HACK, TODO: Confirm StdEncoding vs URLEncoding.
 		// See if user has already reacted with that reaction.
 		// If not, add it. Otherwise, remove it.
 		var q struct {
 			Node struct {
 				IssueComment struct {
 					Reactions struct {
-						ViewerHasReacted githubql.Boolean
+						ViewerHasReacted githubv4.Boolean
 					} `graphql:"reactions(content:$reactionContent)"`
 				} `graphql:"...on IssueComment"`
 			} `graphql:"node(id:$commentID)"`
-			Viewer githubqlUser
+			Viewer githubV4User
 		}
 		variables := map[string]interface{}{
 			"commentID":       commentID,
@@ -787,7 +787,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 					}
 				} `graphql:"addReaction(input:$input)"`
 			}
-			input := githubql.AddReactionInput{
+			input := githubv4.AddReactionInput{
 				SubjectID: commentID,
 				Content:   reactionContent,
 			}
@@ -805,7 +805,7 @@ func (s service) EditComment(ctx context.Context, rs issues.RepoSpec, id uint64,
 					}
 				} `graphql:"removeReaction(input:$input)"`
 			}
-			input := githubql.RemoveReactionInput{
+			input := githubv4.RemoveReactionInput{
 				SubjectID: commentID,
 				Content:   reactionContent,
 			}
@@ -840,7 +840,7 @@ func ghRepoSpec(repo issues.RepoSpec) (repoSpec, error) {
 	}, nil
 }
 
-type githubqlActor struct {
+type githubV4Actor struct {
 	User struct {
 		DatabaseID uint64
 	} `graphql:"...on User"`
@@ -852,7 +852,7 @@ type githubqlActor struct {
 	URL       string
 }
 
-func ghActor(actor *githubqlActor) users.User {
+func ghActor(actor *githubV4Actor) users.User {
 	if actor == nil {
 		return ghost // Deleted user, replace with https://github.com/ghost.
 	}
@@ -867,14 +867,14 @@ func ghActor(actor *githubqlActor) users.User {
 	}
 }
 
-type githubqlUser struct {
+type githubV4User struct {
 	DatabaseID uint64
 	Login      string
 	AvatarURL  string `graphql:"avatarUrl(size:96)"`
 	URL        string
 }
 
-func ghUser(user *githubqlUser) users.User {
+func ghUser(user *githubV4User) users.User {
 	if user == nil {
 		return ghost // Deleted user, replace with https://github.com/ghost.
 	}
@@ -916,11 +916,11 @@ var ghost = users.User{
 }
 
 // ghIssueState converts a GitHub IssueState to issues.State.
-func ghIssueState(state githubql.IssueState) issues.State {
+func ghIssueState(state githubv4.IssueState) issues.State {
 	switch state {
-	case githubql.IssueStateOpen:
+	case githubv4.IssueStateOpen:
 		return issues.OpenState
-	case githubql.IssueStateClosed:
+	case githubv4.IssueStateClosed:
 		return issues.ClosedState
 	default:
 		panic("unreachable")
@@ -928,13 +928,13 @@ func ghIssueState(state githubql.IssueState) issues.State {
 }
 
 // ghPRState converts a GitHub PullRequestState to state.Change.
-func ghPRState(prState githubql.PullRequestState) state.Change {
+func ghPRState(prState githubv4.PullRequestState) state.Change {
 	switch prState {
-	case githubql.PullRequestStateOpen:
+	case githubv4.PullRequestStateOpen:
 		return state.ChangeOpen
-	case githubql.PullRequestStateClosed:
+	case githubv4.PullRequestStateClosed:
 		return state.ChangeClosed
-	case githubql.PullRequestStateMerged:
+	case githubv4.PullRequestStateMerged:
 		return state.ChangeMerged
 	default:
 		panic("unreachable")
@@ -943,9 +943,9 @@ func ghPRState(prState githubql.PullRequestState) state.Change {
 
 func ghEventType(typename string) issues.EventType {
 	switch typename {
-	case "ReopenedEvent": // TODO: Use githubql.IssueTimelineItemReopenedEvent or so.
+	case "ReopenedEvent": // TODO: Use githubv4.IssueTimelineItemReopenedEvent or so.
 		return issues.Reopened
-	case "ClosedEvent": // TODO: Use githubql.IssueTimelineItemClosedEvent or so.
+	case "ClosedEvent": // TODO: Use githubv4.IssueTimelineItemClosedEvent or so.
 		return issues.Closed
 	case "RenamedTitleEvent":
 		return issues.Renamed

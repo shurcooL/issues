@@ -3,21 +3,21 @@ package githubapi
 import (
 	"fmt"
 
-	"github.com/shurcooL/githubql"
+	"github.com/shurcooL/githubv4"
 	"github.com/shurcooL/reactions"
 	"github.com/shurcooL/users"
 )
 
 type reactionGroups []struct {
-	Content githubql.ReactionContent
+	Content githubv4.ReactionContent
 	Users   struct {
-		Nodes      []*githubqlUser
+		Nodes      []*githubV4User
 		TotalCount int
 	} `graphql:"users(first:10)"`
 	ViewerHasReacted bool
 }
 
-// ghReactions converts []githubql.ReactionGroup to []reactions.Reaction.
+// ghReactions converts []githubv4.ReactionGroup to []reactions.Reaction.
 func ghReactions(rgs reactionGroups, viewer users.User) []reactions.Reaction {
 	var rs []reactions.Reaction
 	for _, rg := range rgs {
@@ -55,41 +55,41 @@ func ghReactions(rgs reactionGroups, viewer users.User) []reactions.Reaction {
 	return rs
 }
 
-// internalizeReaction converts githubql.ReactionContent to reactions.EmojiID.
-func internalizeReaction(reaction githubql.ReactionContent) reactions.EmojiID {
+// internalizeReaction converts githubv4.ReactionContent to reactions.EmojiID.
+func internalizeReaction(reaction githubv4.ReactionContent) reactions.EmojiID {
 	switch reaction {
-	case githubql.ReactionContentThumbsUp:
+	case githubv4.ReactionContentThumbsUp:
 		return "+1"
-	case githubql.ReactionContentThumbsDown:
+	case githubv4.ReactionContentThumbsDown:
 		return "-1"
-	case githubql.ReactionContentLaugh:
+	case githubv4.ReactionContentLaugh:
 		return "smile"
-	case githubql.ReactionContentHooray:
+	case githubv4.ReactionContentHooray:
 		return "tada"
-	case githubql.ReactionContentConfused:
+	case githubv4.ReactionContentConfused:
 		return "confused"
-	case githubql.ReactionContentHeart:
+	case githubv4.ReactionContentHeart:
 		return "heart"
 	default:
 		panic("unreachable")
 	}
 }
 
-// externalizeReaction converts reactions.EmojiID to githubql.ReactionContent.
-func externalizeReaction(reaction reactions.EmojiID) (githubql.ReactionContent, error) {
+// externalizeReaction converts reactions.EmojiID to githubv4.ReactionContent.
+func externalizeReaction(reaction reactions.EmojiID) (githubv4.ReactionContent, error) {
 	switch reaction {
 	case "+1":
-		return githubql.ReactionContentThumbsUp, nil
+		return githubv4.ReactionContentThumbsUp, nil
 	case "-1":
-		return githubql.ReactionContentThumbsDown, nil
+		return githubv4.ReactionContentThumbsDown, nil
 	case "smile":
-		return githubql.ReactionContentLaugh, nil
+		return githubv4.ReactionContentLaugh, nil
 	case "tada":
-		return githubql.ReactionContentHooray, nil
+		return githubv4.ReactionContentHooray, nil
 	case "confused":
-		return githubql.ReactionContentConfused, nil
+		return githubv4.ReactionContentConfused, nil
 	case "heart":
-		return githubql.ReactionContentHeart, nil
+		return githubv4.ReactionContentHeart, nil
 	default:
 		return "", fmt.Errorf("%q is an unsupported reaction", reaction)
 	}
