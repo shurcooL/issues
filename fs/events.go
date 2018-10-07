@@ -10,7 +10,7 @@ import (
 	"github.com/shurcooL/users"
 )
 
-func (s service) logIssue(ctx context.Context, repo issues.RepoSpec, issueID uint64, fragment string, issue issue, actor users.User, action string, time time.Time) error {
+func (s *service) logIssue(ctx context.Context, repo issues.RepoSpec, issueID uint64, fragment string, issue issue, actor users.User, action string, time time.Time) error {
 	if s.events == nil {
 		return nil
 	}
@@ -29,7 +29,7 @@ func (s service) logIssue(ctx context.Context, repo issues.RepoSpec, issueID uin
 	return s.events.Log(ctx, event)
 }
 
-func (s service) logIssueComment(ctx context.Context, repo issues.RepoSpec, issueID uint64, fragment string, actor users.User, time time.Time, body string) error {
+func (s *service) logIssueComment(ctx context.Context, repo issues.RepoSpec, issueID uint64, fragment string, actor users.User, time time.Time, body string) error {
 	if s.events == nil {
 		return nil
 	}

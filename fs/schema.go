@@ -210,7 +210,7 @@ func (c commit) Commit() issues.Commit {
 // 	                ├── 0
 // 	                └── events
 
-func (s service) createNamespace(ctx context.Context, repo issues.RepoSpec) error {
+func (s *service) createNamespace(ctx context.Context, repo issues.RepoSpec) error {
 	if path.Clean("/"+repo.URI) != "/"+repo.URI {
 		return fmt.Errorf("invalid repo.URI (not clean): %q", repo.URI)
 	}

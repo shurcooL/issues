@@ -15,10 +15,10 @@ import (
 const threadType = "issues"
 
 // ThreadType returns the notifications thread type for this service.
-func (service) ThreadType(issues.RepoSpec) string { return threadType }
+func (*service) ThreadType(issues.RepoSpec) string { return threadType }
 
 // subscribe subscribes user and anyone mentioned in body to the issue.
-func (s service) subscribe(ctx context.Context, repo issues.RepoSpec, issueID uint64, user users.UserSpec, body string) error {
+func (s *service) subscribe(ctx context.Context, repo issues.RepoSpec, issueID uint64, user users.UserSpec, body string) error {
 	if s.notifications == nil {
 		return nil
 	}
@@ -36,7 +36,7 @@ func (s service) subscribe(ctx context.Context, repo issues.RepoSpec, issueID ui
 }
 
 // markRead marks the specified issue as read for current user.
-func (s service) markRead(ctx context.Context, repo issues.RepoSpec, issueID uint64) error {
+func (s *service) markRead(ctx context.Context, repo issues.RepoSpec, issueID uint64) error {
 	if s.notifications == nil {
 		return nil
 	}
@@ -45,7 +45,7 @@ func (s service) markRead(ctx context.Context, repo issues.RepoSpec, issueID uin
 }
 
 // notify notifies all subscribed users of an update that shows up in their Notification Center.
-func (s service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint64, fragment string, actor users.UserSpec, time time.Time) error {
+func (s *service) notify(ctx context.Context, repo issues.RepoSpec, issueID uint64, fragment string, actor users.UserSpec, time time.Time) error {
 	if s.notifications == nil {
 		return nil
 	}

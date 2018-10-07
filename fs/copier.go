@@ -7,9 +7,12 @@ import (
 	"github.com/shurcooL/issues"
 )
 
-var _ issues.CopierFrom = service{}
+var _ issues.CopierFrom = &service{}
 
-func (s service) CopyFrom(ctx context.Context, src issues.Service, repo issues.RepoSpec) error {
+func (s *service) CopyFrom(ctx context.Context, src issues.Service, repo issues.RepoSpec) error {
+	s.fsMu.Lock()
+	defer s.fsMu.Unlock()
+
 	if err := s.createNamespace(ctx, repo); err != nil {
 		return err
 	}

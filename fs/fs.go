@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/shurcooL/events"
@@ -22,7 +23,7 @@ import (
 // It uses notifications service, if not nil.
 // It uses events service, if not nil.
 func NewService(root webdav.FileSystem, notifications notifications.ExternalService, events events.ExternalService, users users.Service) (issues.Service, error) {
-	return service{
+	return &service{
 		fs:            root,
 		notifications: notifications,
 		events:        events,
@@ -31,7 +32,8 @@ func NewService(root webdav.FileSystem, notifications notifications.ExternalServ
 }
 
 type service struct {
-	fs webdav.FileSystem
+	fsMu sync.RWMutex
+	fs   webdav.FileSystem
 
 	// notifications may be nil if there's no notifications service.
 	notifications notifications.ExternalService
@@ -41,10 +43,13 @@ type service struct {
 	users users.Service
 }
 
-func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
+func (s *service) List(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) ([]issues.Issue, error) {
 	if opt.State != issues.StateFilter(issues.OpenState) && opt.State != issues.StateFilter(issues.ClosedState) && opt.State != issues.AllStates {
 		return nil, fmt.Errorf("invalid issues.IssueListOptions.State value: %q", opt.State) // TODO: Map to 400 Bad Request HTTP error.
 	}
+
+	s.fsMu.RLock()
+	defer s.fsMu.RUnlock()
 
 	var is []issues.Issue
 
@@ -98,10 +103,13 @@ func (s service) List(ctx context.Context, repo issues.RepoSpec, opt issues.Issu
 	return is, nil
 }
 
-func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
+func (s *service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.IssueListOptions) (uint64, error) {
 	if opt.State != issues.StateFilter(issues.OpenState) && opt.State != issues.StateFilter(issues.ClosedState) && opt.State != issues.AllStates {
 		return 0, fmt.Errorf("invalid issues.IssueListOptions.State value: %q", opt.State) // TODO: Map to 400 Bad Request HTTP error.
 	}
+
+	s.fsMu.RLock()
+	defer s.fsMu.RUnlock()
 
 	var count uint64
 
@@ -132,11 +140,14 @@ func (s service) Count(ctx context.Context, repo issues.RepoSpec, opt issues.Iss
 	return count, nil
 }
 
-func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issues.Issue, error) {
+func (s *service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issues.Issue, error) {
 	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return issues.Issue{}, err
 	}
+
+	s.fsMu.RLock()
+	defer s.fsMu.RUnlock()
 
 	var issue issue
 	err = jsonDecodeFile(ctx, s.fs, issueCommentPath(repo, id, 0), &issue)
@@ -180,11 +191,14 @@ func (s service) Get(ctx context.Context, repo issues.RepoSpec, id uint64) (issu
 	}, nil
 }
 
-func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Comment, error) {
+func (s *service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Comment, error) {
 	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	s.fsMu.RLock()
+	defer s.fsMu.RUnlock()
 
 	var comments []issues.Comment
 
@@ -233,7 +247,10 @@ func (s service) ListComments(ctx context.Context, repo issues.RepoSpec, id uint
 	return comments, nil
 }
 
-func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
+func (s *service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64, opt *issues.ListOptions) ([]issues.Event, error) {
+	s.fsMu.RLock()
+	defer s.fsMu.RUnlock()
+
 	var events []issues.Event
 
 	fis, err := readDirIDs(ctx, s.fs, issueEventsDir(repo, id))
@@ -269,7 +286,7 @@ func (s service) ListEvents(ctx context.Context, repo issues.RepoSpec, id uint64
 	return events, nil
 }
 
-func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
+func (s *service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uint64, c issues.Comment) (issues.Comment, error) {
 	// CreateComment operation requires an authenticated user with read access.
 	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
@@ -282,6 +299,9 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 	if err := c.Validate(); err != nil {
 		return issues.Comment{}, err
 	}
+
+	s.fsMu.Lock()
+	defer s.fsMu.Unlock()
 
 	comment := comment{
 		Author:    fromUserSpec(currentUser.UserSpec),
@@ -330,7 +350,7 @@ func (s service) CreateComment(ctx context.Context, repo issues.RepoSpec, id uin
 	}, nil
 }
 
-func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
+func (s *service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issue) (issues.Issue, error) {
 	// Create operation requires an authenticated user with read access.
 	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
@@ -343,6 +363,9 @@ func (s service) Create(ctx context.Context, repo issues.RepoSpec, i issues.Issu
 	if err := i.Validate(); err != nil {
 		return issues.Issue{}, err
 	}
+
+	s.fsMu.Lock()
+	defer s.fsMu.Unlock()
 
 	if err := s.createNamespace(ctx, repo); err != nil {
 		return issues.Issue{}, err
@@ -448,7 +471,7 @@ func canReact(currentUser users.UserSpec) error {
 	return nil
 }
 
-func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
+func (s *service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir issues.IssueRequest) (issues.Issue, []issues.Event, error) {
 	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return issues.Issue{}, nil, err
@@ -460,6 +483,9 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	if err := ir.Validate(); err != nil {
 		return issues.Issue{}, nil, err
 	}
+
+	s.fsMu.Lock()
+	defer s.fsMu.Unlock()
 
 	// Get from storage.
 	var issue issue
@@ -473,7 +499,6 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 		return issues.Issue{}, nil, err
 	}
 
-	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 	author := issue.Author.UserSpec()
 	actor := currentUser.UserSpec
 
@@ -569,7 +594,7 @@ func (s service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir i
 	}, events, nil
 }
 
-func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
+func (s *service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint64, cr issues.CommentRequest) (issues.Comment, error) {
 	currentUser, err := s.users.GetAuthenticated(ctx)
 	if err != nil {
 		return issues.Comment{}, err
@@ -582,6 +607,9 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 	if err != nil {
 		return issues.Comment{}, err
 	}
+
+	s.fsMu.Lock()
+	defer s.fsMu.Unlock()
 
 	// TODO: Merge these 2 cases (first comment aka issue vs reply comments) into one.
 	if cr.ID == 0 {
@@ -604,7 +632,6 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 			}
 		}
 
-		// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 		author := issue.Author.UserSpec()
 		actor := currentUser.UserSpec
 		editedAt := time.Now().UTC()
@@ -689,7 +716,6 @@ func (s service) EditComment(ctx context.Context, repo issues.RepoSpec, id uint6
 		}
 	}
 
-	// TODO: Doing this here before committing in case it fails; think about factoring this out into a user service that augments...
 	author := comment.Author.UserSpec()
 	actor := currentUser.UserSpec
 	editedAt := time.Now().UTC()

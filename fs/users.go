@@ -7,7 +7,7 @@ import (
 	"github.com/shurcooL/users"
 )
 
-func (s service) user(ctx context.Context, user users.UserSpec) users.User {
+func (s *service) user(ctx context.Context, user users.UserSpec) users.User {
 	u, err := s.users.Get(ctx, user)
 	if err != nil {
 		return users.User{
