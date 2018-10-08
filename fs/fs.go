@@ -531,6 +531,7 @@ func (s *service) Edit(ctx context.Context, repo issues.RepoSpec, id uint64, ir 
 			event.Type = issues.Reopened
 		case issues.ClosedState:
 			event.Type = issues.Closed
+			event.Close = fromClose(issues.Close{Closer: nil})
 		}
 	case ir.Title != nil && *ir.Title != origTitle:
 		event.Type = issues.Renamed
