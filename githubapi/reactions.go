@@ -70,6 +70,10 @@ func internalizeReaction(reaction githubv4.ReactionContent) reactions.EmojiID {
 		return "confused"
 	case githubv4.ReactionContentHeart:
 		return "heart"
+	case githubv4.ReactionContentRocket:
+		return "rocket"
+	case githubv4.ReactionContentEyes:
+		return "eyes"
 	default:
 		panic("unreachable")
 	}
@@ -90,6 +94,10 @@ func externalizeReaction(reaction reactions.EmojiID) (githubv4.ReactionContent, 
 		return githubv4.ReactionContentConfused, nil
 	case "heart":
 		return githubv4.ReactionContentHeart, nil
+	case "rocket":
+		return githubv4.ReactionContentRocket, nil
+	case "eyes":
+		return githubv4.ReactionContentEyes, nil
 	default:
 		return "", fmt.Errorf("%q is an unsupported reaction", reaction)
 	}
