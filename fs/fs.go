@@ -1,4 +1,4 @@
-// Package fs implements issues.Service using a filesystem.
+// Package fs implements issues.Service using a virtual filesystem.
 package fs
 
 import (
