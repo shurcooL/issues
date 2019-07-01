@@ -23,6 +23,7 @@ func (s *service) logIssue(ctx context.Context, repo issues.RepoSpec, issueID ui
 		Payload: eventpkg.Issue{
 			Action:       action,
 			IssueTitle:   issue.Title,
+			IssueBody:    issue.Body,
 			IssueHTMLURL: htmlURL(repo.URI, issueID, fragment),
 		},
 	}
