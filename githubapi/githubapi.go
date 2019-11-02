@@ -55,12 +55,12 @@ func (s service) List(ctx context.Context, rs issues.RepoSpec, opt issues.IssueL
 		// TODO: Map to 400 Bad Request HTTP error.
 		return nil, err
 	}
-	var states []githubv4.IssueState
+	var states *[]githubv4.IssueState
 	switch opt.State {
 	case issues.StateFilter(issues.OpenState):
-		states = []githubv4.IssueState{githubv4.IssueStateOpen}
+		states = &[]githubv4.IssueState{githubv4.IssueStateOpen}
 	case issues.StateFilter(issues.ClosedState):
-		states = []githubv4.IssueState{githubv4.IssueStateClosed}
+		states = &[]githubv4.IssueState{githubv4.IssueStateClosed}
 	case issues.AllStates:
 		states = nil // No states to filter the issues by.
 	default:
@@ -128,12 +128,12 @@ func (s service) Count(ctx context.Context, rs issues.RepoSpec, opt issues.Issue
 		// TODO: Map to 400 Bad Request HTTP error.
 		return 0, err
 	}
-	var states []githubv4.IssueState
+	var states *[]githubv4.IssueState
 	switch opt.State {
 	case issues.StateFilter(issues.OpenState):
-		states = []githubv4.IssueState{githubv4.IssueStateOpen}
+		states = &[]githubv4.IssueState{githubv4.IssueStateOpen}
 	case issues.StateFilter(issues.ClosedState):
-		states = []githubv4.IssueState{githubv4.IssueStateClosed}
+		states = &[]githubv4.IssueState{githubv4.IssueStateClosed}
 	case issues.AllStates:
 		states = nil // No states to filter the issues by.
 	default:
