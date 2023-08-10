@@ -250,6 +250,10 @@ func (s service) ListEvents(_ context.Context, rs issues.RepoSpec, id uint64, op
 				Name:  e.Label,
 				Color: issues.RGB{R: 0xED, G: 0xED, B: 0xED}, // maintner.Corpus doesn't support GitHub issue label colors, so fall back to a default light gray.
 			}
+		case issues.Milestoned, issues.Demilestoned:
+			ev.Milestone = &issues.Milestone{
+				Name: e.Milestone,
+			}
 		}
 		es = append(es, ev)
 		return nil

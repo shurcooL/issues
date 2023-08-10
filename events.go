@@ -13,9 +13,10 @@ type Event struct {
 	Actor     users.User
 	CreatedAt time.Time
 	Type      EventType
-	Close     Close   // Close is only specified for Closed events.
-	Rename    *Rename // Rename is only provided for Renamed events.
-	Label     *Label  // Label is only provided for Labeled and Unlabeled events.
+	Close     Close      // Close is only specified for Closed events.
+	Rename    *Rename    // Rename is only provided for Renamed events.
+	Label     *Label     // Label is only provided for Labeled and Unlabeled events.
+	Milestone *Milestone // Milestone is only provided for Milestoned and Demilestoned events.
 }
 
 // EventType is the type of an event.
@@ -32,6 +33,10 @@ const (
 	Labeled EventType = "labeled"
 	// Unlabeled is when an issue is unlabeled.
 	Unlabeled EventType = "unlabeled"
+	// Milestoned is when an issue is milestoned.
+	Milestoned EventType = "milestoned"
+	// Demilestoned is when an issue is demilestoned.
+	Demilestoned EventType = "demilestoned"
 	// CommentDeleted is when an issue comment is deleted.
 	CommentDeleted EventType = "comment_deleted"
 )
@@ -39,7 +44,7 @@ const (
 // Valid returns non-nil error if the event type is invalid.
 func (et EventType) Valid() bool {
 	switch et {
-	case Reopened, Closed, Renamed, Labeled, Unlabeled, CommentDeleted:
+	case Reopened, Closed, Renamed, Labeled, Unlabeled, Milestoned, Demilestoned, CommentDeleted:
 		return true
 	default:
 		return false

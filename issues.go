@@ -110,6 +110,11 @@ func (c RGB) HexString() string {
 	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
 }
 
+// Milestone represents a milestone.
+type Milestone struct {
+	Name string
+}
+
 // Comment represents a comment left on an issue.
 type Comment struct {
 	ID        uint64
